@@ -30,6 +30,8 @@ nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 20px);align-self
 nav.toc a{display:block;color:var(--muted);text-decoration:none;padding:4px 0 4px 10px;border-left:2px solid var(--line)}
 nav.toc a:hover,nav.toc a:focus-visible{color:var(--fg);border-left-color:var(--accent);outline:none}
 nav.toc .grp{font:600 11px/1 var(--body);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:18px 0 6px}
+nav.toc a.done{color:var(--done)}
+nav.toc .tick{color:var(--accent);font-weight:700}
 main{min-width:0}
 h1{font:700 clamp(28px,4vw,40px)/1.1 var(--display);margin:0 0 8px;text-wrap:balance}
 h2{font:700 26px/1.2 var(--display);margin:56px 0 6px;text-wrap:balance;scroll-margin-top:20px}
@@ -81,7 +83,7 @@ td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--accen
   <div class="grp">Antes</div>
   <a href="#ordem">A ordem</a>
   <div class="grp">Teste na mão</div>
-  <!-- uma linha por PR, na ordem de teste; «✓» no fim quando mergeado -->
+  <!-- uma linha por PR, na ordem de teste; o ✓ aparece sozinho quando todos os passos da seção estão marcados -->
   <a href="#eng-0000">1 · App #N título curto</a>
   <div class="grp">Depois</div>
   <a href="#falta">O que ainda falta</a>
@@ -111,7 +113,7 @@ td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--accen
 <p><strong>O que o ticket se propõe:</strong> o que estava errado ou faltava, e o que passa a acontecer. Duas frases, sem nomes de código.</p>
 <p><a href="https://github.com/ORG/REPO/pull/N" target="_blank" rel="noopener">PR #N</a> · ENG-0000. Verificado no commit <code>abc1234</code>. O merge libera ENG-0001.</p>
 <div class="alert warn"><p><strong>Ambiente:</strong> com que servidor cada app fala (API local na porta 8020 com banco próprio, modo de exemplo sem API, staging), a conta de teste, o aparelho. Nunca a app publicada: ela é a produção.</p></div>
-<ol class="steps" data-group="eng-0000">
+<ol class="steps">
   <li><input type="checkbox" aria-label="feito"><div class="t"><strong>Branch e comando</strong>
 <pre><code>cd /caminho/absoluto/do/worktree
 git log -1 --oneline
@@ -140,7 +142,7 @@ npm run dev -- --port 5197 --strictPort</code></pre>
   var boxes=[].slice.call(document.querySelectorAll("ol.steps>li>input[type=checkbox]"));
   boxes.forEach(function(b){
     var ol=b.closest("ol"), idx=[].indexOf.call(ol.children,b.parentElement);
-    b.id="c-"+ol.dataset.group+"-"+idx;
+    b.id="c-"+ol.closest("section").id+"-"+idx;
     if(state[b.id]){b.checked=true;b.parentElement.classList.add("done")}
     b.addEventListener("change",function(){
       b.parentElement.classList.toggle("done",b.checked);
@@ -151,6 +153,15 @@ npm run dev -- --port 5197 --strictPort</code></pre>
   function progress(){
     var n=boxes.filter(function(b){return b.checked}).length;
     document.getElementById("progress").textContent=n+" de "+boxes.length+" passos feitos";
+    document.querySelectorAll("ol.steps").forEach(function(ol){
+      var a=document.querySelector('nav.toc a[href="#'+ol.closest("section").id+'"]'); if(!a) return;
+      var steps=ol.querySelectorAll("input[type=checkbox]");
+      var all=steps.length>0&&[].every.call(steps,function(b){return b.checked});
+      var tick=a.querySelector(".tick");
+      if(all&&!tick){tick=document.createElement("span");tick.className="tick";tick.textContent=" ✓";a.appendChild(tick)}
+      if(!all&&tick){tick.remove()}
+      a.classList.toggle("done",all);
+    });
   }
   document.getElementById("reset").addEventListener("click",function(){
     boxes.forEach(function(b){b.checked=false;b.parentElement.classList.remove("done")});
