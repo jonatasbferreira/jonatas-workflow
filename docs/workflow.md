@@ -19,7 +19,7 @@ The old workspaces are in the **Arquivo** folder inside the Shema YWAM group, in
 
 ## A round, in short
 
-You bring everything to the Definer, which grills, defines and writes the manifest with you in the `round` note. You `/clear` the Orchestrator and say "go"; it publishes the round's hand-test guide, the `Testes na mão` page, and runs only that manifest, through executors, to verified PRs, each with its section in the guide: what the ticket proposes, how to bring the environment up, and the steps with what you must see. You answer `for you`, test each PR from its section and merge every PR. The round closes with a `state · <date>` note; then a new manifest, `/clear` and "go" again. The notes are the memory; the session is not.
+You bring everything to the Definer, which grills, defines and writes the manifest with you in the `round` note. You `/clear` the Orchestrator and say "go"; it publishes the round's hand-test guide, the `Testes na mão` page, and runs only that manifest, through executors, to verified PRs, each with João's review answered and its section in the guide: what the ticket proposes, how to bring the environment up, and the steps with what you must see. You answer `for you`, test each PR from its section and merge every PR. The round closes with a `state · <date>` note; then a new manifest, `/clear` and "go" again. The notes are the memory; the session is not.
 
 Your side of it, step by step, is the `how it works` note. The rules live in the role files, which are the source of truth: `roles/definer.md`, `roles/orchestrator.md`, `roles/executor.md`, and their rare branches in `roles/definer-rare-cases.md` and `roles/orchestrator-rare-cases.md`.
 

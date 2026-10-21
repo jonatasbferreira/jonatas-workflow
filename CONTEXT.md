@@ -122,6 +122,10 @@ _Avoid_: worker, implementer, dev agent
 One frontier of grilling questions, each with its recommended answer first: at most four to a call, the rest in the calls that follow.
 _Avoid_: round (that is the batch of work), interview, Q&A session
 
+**João's review**:
+The review the bot posts on a PR in the shemaobt organisation once João is requested as reviewer, read thread by thread.
+_Avoid_: bot review, Joãozinho, reviewer comments
+
 ### Work items
 
 **Small ask**:
