@@ -1,4 +1,4 @@
-# How the Batuta workflow runs
+# How the Jonatas Workflow runs
 
 Written on 2026-09-08, the night the workflow was assembled. Read this before opening the canvas.
 
@@ -8,18 +8,18 @@ Define before dispatching: you and the Definer close the business rule and the d
 
 ## The canvas
 
-One workspace for Shema, called **Shema**, rooted at `~/Documents/programming/obt`. In it:
+One workspace for Shema, called **Shema**, rooted at `~/code/shema`. In it:
 
 - **Definidor** (the Definer) — the terminal you talk to, and the front door. Everything you want enters here: ideas, defects, small asks with no open decision, tickets other people opened that you want worked, and the order of the next round; the findings the last round left it reads itself. It defines, and it writes the manifest with you. Fable, effort `high`: `claude --model fable --effort high`.
 - **Orquestrador** (the Orchestrator) — the terminal that runs the round: only the tickets on the manifest, in that order. From you it hears "go", "close the round", "emergency", and your answers to the lines it wrote in `for you`. Opus, effort `high`: `claude --model opus --effort high`. Needs **Maestro Mode on** to recruit executors: toggle it on the terminal the first time.
-- Five standing notes with fixed names: **round** (the manifest; outside a round its body reads `(no round open)`), **board** (one line per slice of the open round, in manifest order: `<codename> · <ticket> · <state> · <model>`; emptied at round close), **for you** (only what is still pending on you), **findings** (what showed up outside the slice and outside the code the round changed, one line each), and **how it works** (the short version of this file). The **logs** stack holds `log · <codename>`, `state · <date>` and `definition · <date>`; you almost never open it. `bin/setup-canvas`, run in the Orchestrator terminal with Maestro Mode on, creates and wires the five notes and schedules the routines; a missing standing note is fixed by rerunning it, never by creating it by hand.
-- Three routines: **morning state** daily at 08:30, **evening round check** daily at 18:30, **for you reminder** on weekdays at noon. They read the round note and the latest state note, report on the board, clean `for you` of what you already ticked or answered, and push you the reminder; the morning state also dispatches a held slice whose earlier PR has merged, and the evening check also closes the round, but only when every manifest item is merged or waiting Henok and no slice is held. A routine never opens a round and never closes one by the clock.
+- Five standing notes with fixed names: **round** (the manifest; outside a round its body reads `(no round open)`), **board** (a first line linking the round's hand-test guide, then one line per slice of the open round, in manifest order: `<codename> · <ticket> · <state> · <model>`; emptied at round close), **for you** (only what is still pending on you), **findings** (what showed up outside the slice and outside the code the round changed, one line each), and **how it works** (the short version of this file). The **logs** stack holds `log · <codename>`, `state · <date>` and `definition · <date>`; you almost never open it. `bin/setup-canvas`, run in the Orchestrator terminal with Maestro Mode on, creates and wires the five notes and schedules the routines; a missing standing note is fixed by rerunning it, never by creating it by hand.
+- Three routines: **morning state** daily at 08:30, **evening round check** daily at 18:30, **for you reminder** on weekdays at noon. They read the round note and the latest state note, report on the board, clean `for you` of what you already ticked or answered, and push you the reminder; the morning state also dispatches a held slice whose earlier PR has merged, and the evening check also closes the round, but only when every manifest item is merged or waiting Jonatas and no slice is held. A routine never opens a round and never closes one by the clock.
 
-The old workspaces are in the **Arquivo** folder inside the Shema YWAM group, intact, with their terminals and notes. Delete them whenever you like; the notes are exported in `batuta/archive/notes/`. The **teste** workspace in "Arquivo (apagar)" was the mould and can be deleted. **Quick Sermon** was not touched.
+The old workspaces are in the **Arquivo** folder inside the Shema YWAM group, intact, with their terminals and notes. Delete them whenever you like; the notes are exported in `jonatas-workflow/archive/notes/`. The **teste** workspace in "Arquivo (apagar)" was the mould and can be deleted. **Quick Sermon** was not touched.
 
 ## A round, in short
 
-You bring everything to the Definer, which grills, defines and writes the manifest with you in the `round` note. You `/clear` the Orchestrator and say "go"; it runs only that manifest, through executors, to verified PRs. You answer `for you` and merge every PR. The round closes with a `state · <date>` note; then a new manifest, `/clear` and "go" again. The notes are the memory; the session is not.
+You bring everything to the Definer, which grills, defines and writes the manifest with you in the `round` note. You `/clear` the Orchestrator and say "go"; it publishes the round's hand-test guide, the `Testes na mão` page, and runs only that manifest, through executors, to verified PRs, each with its section in the guide: what the ticket proposes, how to bring the environment up, and the steps with what you must see. You answer `for you`, test each PR from its section and merge every PR. The round closes with a `state · <date>` note; then a new manifest, `/clear` and "go" again. The notes are the memory; the session is not.
 
 Your side of it, step by step, is the `how it works` note. The rules live in the role files, which are the source of truth: `roles/definer.md`, `roles/orchestrator.md`, `roles/executor.md`, and their rare branches in `roles/definer-rare-cases.md` and `roles/orchestrator-rare-cases.md`.
 
@@ -37,29 +37,22 @@ The Definer on Fable and the Orchestrator on Opus, both with effort `high`; exec
 
 ## Where everything lives
 
-- `~/Documents/programming/batuta` — this repository: skillset, roles, scripts, templates. Private on GitHub at `henokteixeira/batuta`.
-- `~/.claude/CLAUDE.md` — generated by Nori from `batuta/skillset/AGENTS.md`. Active skillset: `personal/batuta`.
-- Roles in Maestri (`Definidor`, `Orquestrador`, `Executor`) — only pointers to `batuta/roles/*.md`. Edit the file, not the preset.
+- `~/code/jonatas-workflow` — this repository: skillset, roles, scripts, templates. Forked from `henokteixeira/batuta`, kept as the `upstream` remote.
+- `~/.claude/CLAUDE.md` — a link to `jonatas-workflow/skillset/AGENTS.md`, made by `bin/install`. `~/.claude/skills/*` and `~/.claude/agents/*` are links too, except the Maestri skills, which the app installs.
+- Roles in Maestri (`Definidor`, `Orquestrador`, `Executor`) — only pointers to `jonatas-workflow/roles/*.md`. Edit the file, not the preset.
 - Linear, team Engineering — labels `ready-for-agent` and `ready-for-human`; only the Definer ever applies `ready-for-agent`, and every ticket it labels, with either label, is assigned to you. Tickets other people open there enter the flow only when you bring them to the Definer; nothing in Linear is listed, audited or dispatched because it is sitting there.
-
-## What changed in Nori
-
-Skillset `personal/batuta` instead of `public/high-autonomy`. Out: brainstorming, root-cause-tracing, creating-debug-tests-and-iterating, webapp-testing, building-ui-ux, ui-ux-experimentation, creating-a-skillset, updating-noridocs and the documentation and pattern subagents. In: grilling, grill-me, grill-with-docs, domain-modeling, to-spec, to-tickets, code-review, handoff, wizard, to-questionnaire, wayfinder, prototype, retro and writing-for-agents. Every role loads a skill before the step that names it, instead of reciting it. The six Maestri skills and the Mac cleanup skill are now part of the skillset so a switch cannot delete them.
 
 ## Notification
 
-The Claude Code Notification hook points to `batuta/bin/notify-maestri.sh`: inside Maestri, clicking the notification opens Maestri; outside it, it falls back to Nori's hook.
+The Claude Code Notification hook in `~/.claude/settings.json` points to `jonatas-workflow/bin/notify-maestri.sh`, a `notify-send` script: inside Maestri, clicking the notification raises the Maestri window; outside it, it is a plain desktop notification.
 
 ## After editing the workflow
 
-- `skillset/AGENTS.md`: with `NORI_SKILLSETS_COMMIT_ATTRIBUTION=agent` exported, run `nori-skillsets switch personal/batuta` and check the list below.
-- A role file in `batuta/roles/`: type `/clear` in that terminal. The preset re-reads the file at the next session.
+- `skillset/AGENTS.md`, a skill or a subagent: nothing to run, they are links. A new skill or subagent needs one `bin/install`.
+- A role file in `jonatas-workflow/roles/`: type `/clear` in that terminal. The preset re-reads the file at the next session.
+- `templates/hand-test.html`: nothing to run; the Orchestrator reads it when the next round opens.
 - A note template or a routine prompt: rerun `bin/setup-canvas` in the Orchestrator terminal. It recreates any missing standing note, refreshes `how it works` from its template and refreshes the routine prompts; `board`, `for you`, `findings` and `round` hold live content and are never overwritten, so a change to their templates reaches only a new workspace.
 
-## After any `nori-skillsets switch`
+## Git identity
 
-The switch reinstalls `settings.json` and deletes from `~/.claude/skills` whatever is not in the skillset. Check:
-
-1. Notification hook pointing to `batuta/bin/notify-maestri.sh`.
-2. `NORI_SKILLSETS_COMMIT_ATTRIBUTION=agent` exported in `~/.zshrc` before any switch. Nori's hook loader reads it: with `agent` it does not install the PreToolUse hook `commit-author.js`, which swaps the co-author for Nori, and leaves `includeCoAuthoredBy` alone. Then the hook is absent and the co-author is Claude.
-3. Never override the git author: the global config is `henokteixeira <henokteixeira@gmail.com>`, which is the GitHub account; `gh` and the Linear MCP are logged in as Henok too, so `--assignee @me` on GitHub and assignee `me` on Linear are him.
+Never override the git author: the global config is `jonatas <jonatas.brito.ferreira@gmail.com>`, and `gh` is logged in as `jonatasbferreira`, so `--assignee @me` on GitHub and assignee `me` on Linear are you.

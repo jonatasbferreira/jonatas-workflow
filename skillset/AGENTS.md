@@ -1,26 +1,26 @@
 <required>
 - *CRITICAL* Add each element of this checklist to the session's task list. The last element should be 'Finish development with final checks...'. DO NOT BE LAZY.
-- Announce "Following the Batuta workflow..." to the user.
+- Announce "Following the Jonatas Workflow..." to the user.
 <system-reminder> Do not skip steps. Do not rationalize. Read the skill files even if you think you know them. </system-reminder>
-- Read `{{skills_dir}}/using-skills/SKILL.md`.
+- Read `~/.claude/skills/using-skills/SKILL.md`.
 - Read the repo's `CONTEXT.md` (glossary) and `docs/adr/` if they exist, and the spec or ticket this work comes from. Use the glossary's terms in code, tests, plans and commits.
-- Check git status. If on main, master, dev or any protected branch: read and follow `{{skills_dir}}/using-git-worktrees/SKILL.md`. Derive the branch name from the request.
+- Check git status. If on main, master, dev or any protected branch: read and follow `~/.claude/skills/using-git-worktrees/SKILL.md`. Derive the branch name from the request.
 <system-reminder> You are now in a new working directory. Do NOT leave this directory. </system-reminder>
-- Research how to best solve the task WITHOUT making code changes: search `{{skills_dir}}/` for relevant skills; use nori-code-researcher and nori-web-researcher, several of each in parallel.
-- If any decision is still open after research, read and follow `{{skills_dir}}/grilling/SKILL.md`: ask the whole frontier at once with a recommended answer, then WAIT. Never assume. Facts are yours to find; only decisions go to the human. Before closing, enumerate the code paths the change governs.
-- Read and follow `{{skills_dir}}/writing-plans/SKILL.md`. Present the plan and iterate until approved.
-- Use test driven development. Read and follow `{{skills_dir}}/test-driven-development/SKILL.md`. Write every test before any implementation. The expected value of a test comes from the spec, never from the code under test.
+- Research how to best solve the task WITHOUT making code changes: search `~/.claude/skills/` for relevant skills; use nori-code-researcher and nori-web-researcher, several of each in parallel.
+- If any decision is still open after research, read and follow `~/.claude/skills/grilling/SKILL.md`: ask the whole frontier at once with a recommended answer, then WAIT. Never assume. Facts are yours to find; only decisions go to the human. Before closing, enumerate the code paths the change governs.
+- Read and follow `~/.claude/skills/writing-plans/SKILL.md`. Present the plan and iterate until approved.
+- Use test driven development. Read and follow `~/.claude/skills/test-driven-development/SKILL.md`. Write every test before any implementation. The expected value of a test comes from the spec, never from the code under test.
 - Falsify every test by hand: comment out the fix, watch the test go red, restore it. Test and implementation land in the same commit.
-- Read and follow `{{skills_dir}}/test-scenario-hygiene/SKILL.md`.
-- Record decisions, not code: an ADR under `docs/adr/` if the decision is hard to reverse, a `CONTEXT.md` entry if a term was created or changed, an `AGENTS.md` line if a command or convention changed. Read `{{skills_dir}}/domain-modeling/SKILL.md` for the formats. Never write per-folder documentation of the code.
-- Read and follow `{{skills_dir}}/code-review/SKILL.md`: review on three axes: standards, faithfulness to the spec, and attack.
-- Finish development with final checks. Read and follow `{{skills_dir}}/finishing-a-development-branch/SKILL.md`.
+- Read and follow `~/.claude/skills/test-scenario-hygiene/SKILL.md`.
+- Record decisions, not code: an ADR under `docs/adr/` if the decision is hard to reverse, a `CONTEXT.md` entry if a term was created or changed, an `AGENTS.md` line if a command or convention changed. Read `~/.claude/skills/domain-modeling/SKILL.md` for the formats. Never write per-folder documentation of the code.
+- Read and follow `~/.claude/skills/code-review/SKILL.md`: review on three axes: standards, faithfulness to the spec, and attack.
+- Finish development with final checks. Read and follow `~/.claude/skills/finishing-a-development-branch/SKILL.md`.
 <system-reminder> NEVER say 'You are absolutely right!' </system-reminder>
 </required>
 
 # Tone
 
-Do not be deferential. I am not always right. Flag when you do not know something. Flag bad ideas, unreasonable expectations and mistakes. If you disagree, even on a gut feeling, push back. Stop and ask when a decision is mine. In a Batuta workspace the ask is one line in "for you", written by the agent that talks to me and deleted once I answer; an agent recruited by another agent asks its recruiter.
+Do not be deferential. I am not always right. Flag when you do not know something. Flag bad ideas, unreasonable expectations and mistakes. If you disagree, even on a gut feeling, push back. Stop and ask when a decision is mine. In a Jonatas Workflow workspace the ask is one line in "for you", written by the agent that talks to me and deleted once I answer; an agent recruited by another agent asks its recruiter.
 Everything written for me is short and written for a human: chat, notes, PRs, tickets, reviews and commits. The point first, plain words, no internal identifiers I do not need; detail I may want goes behind a pointer or in `<details>`. In chat and notes, sacrifice grammar for concision; PRs, tickets, ADRs and commits stay in full sentences, just few of them.
 <required> Never say "You are absolutely right" or anything equivalent. It is insulting in my culture. </required>
 

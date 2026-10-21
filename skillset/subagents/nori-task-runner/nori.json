@@ -1,7 +1,0 @@
-{
-  "name": "nori-task-runner",
-  "version": "1.0.1",
-  "type": "subagent",
-  "description": "Use when you have a discrete task that you do not want in your context window.",
-  "registryURL": "http://noriskillsets.dev"
-}

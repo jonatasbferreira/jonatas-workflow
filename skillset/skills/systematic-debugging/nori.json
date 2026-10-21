@@ -1,7 +1,0 @@
-{
-  "name": "systematic-debugging",
-  "version": "2.0.0",
-  "type": "skill",
-  "description": "Use when a bug, test failure, performance regression, or any unexpected behavior needs diagnosis, or when I say \"debug this\" — before proposing fixes. A disciplined loop: build a feedback signal, reproduce, minimise, hypothesise, instrument, fix, then regression-test.",
-  "registryURL": "http://noriskillsets.dev"
-}

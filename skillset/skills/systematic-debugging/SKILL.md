@@ -8,7 +8,7 @@ description: 'Use when a bug, test failure, performance regression, or any unexp
 - Reproduce the failure through the loop, then minimise it.
 - List 3–5 ranked, falsifiable hypotheses.
 - Instrument to test them, one variable at a time.
-- Fix at a correct seam and lock it with a regression test. Use `{{skills_dir}}/test-driven-development/SKILL.md`.
+- Fix at a correct seam and lock it with a regression test. Use `~/.claude/skills/test-driven-development/SKILL.md`.
 - Clean up instrumentation and run the post-mortem.
 </required>
 

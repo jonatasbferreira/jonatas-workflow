@@ -1,0 +1,39 @@
+#!/bin/bash
+# Links this repository into ~/.claude: the global CLAUDE.md, the skills, the subagents and the Notification hook.
+# Idempotent: rerun after adding a skill or a subagent. The Maestri skills are not linked; the Maestri app installs its own.
+set -eu
+R="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+C="${CLAUDE_HOME:-$HOME/.claude}"
+mkdir -p "$C/skills" "$C/agents"
+
+link() {
+  if [ -e "$2" ] && [ ! -L "$2" ]; then echo "skip  $2 (exists and is not a link)"; return; fi
+  ln -sfn "$1" "$2" && echo "link  $2 -> $1"
+}
+
+link "$R/skillset/AGENTS.md" "$C/CLAUDE.md"
+for d in "$R"/skillset/skills/*/; do
+  n=$(basename "$d")
+  case "$n" in maestri|maestri-*) continue ;; esac
+  link "${d%/}" "$C/skills/$n"
+done
+for d in "$R"/skillset/subagents/*/; do
+  n=$(basename "$d")
+  link "${d%/}/SUBAGENT.md" "$C/agents/$n.md"
+done
+
+chmod +x "$R/bin/notify-maestri.sh" "$R/bin/setup-canvas"
+python3 - "$R/bin/notify-maestri.sh" "$C/settings.json" <<'PY'
+import json, sys
+hook, path = sys.argv[1], sys.argv[2]
+try:
+    s = json.load(open(path))
+except FileNotFoundError:
+    s = {}
+n = s.setdefault("hooks", {}).setdefault("Notification", [])
+if not any(h.get("command") == hook for e in n for h in e.get("hooks", [])):
+    n.append({"hooks": [{"type": "command", "command": hook}]})
+with open(path, "w") as f:
+    json.dump(s, f, indent=2, ensure_ascii=False); f.write("\n")
+print("hook  Notification -> " + hook)
+PY

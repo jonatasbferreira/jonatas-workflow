@@ -1,7 +1,0 @@
-{
-  "name": "nori-code-researcher",
-  "version": "1.0.0",
-  "type": "subagent",
-  "description": "Use this subagent to find code context.",
-  "registryURL": "http://noriskillsets.dev"
-}

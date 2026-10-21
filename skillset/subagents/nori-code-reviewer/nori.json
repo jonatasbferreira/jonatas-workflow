@@ -1,7 +1,0 @@
-{
-  "name": "nori-code-reviewer",
-  "version": "1.0.1",
-  "type": "subagent",
-  "description": "Use after making code changes but before submitting a PR as a final check. Explain what the purpose of the change is when using this agent.",
-  "registryURL": "http://noriskillsets.dev"
-}

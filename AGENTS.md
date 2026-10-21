@@ -1,6 +1,6 @@
-# batuta
+# jonatas-workflow
 
-Batuta is Henok's project-agnostic workflow for agents on a Maestri canvas: the skillset, the terminal roles, the note templates and the setup script.
+Jonatas Workflow is Jonatas's project-agnostic workflow for agents on a Maestri canvas: the skillset, the terminal roles, the note templates and the setup script.
 
 No package manager: Markdown and bash.
 

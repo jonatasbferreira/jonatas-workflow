@@ -1,17 +1,17 @@
-# Batuta
+# Jonatas Workflow
 
-Batuta is Henok's workflow for agents on a Maestri canvas: how work is defined, batched into a round, dispatched, and merged. These are its words; the roles, the templates, the plans, the tickets and the commits use no others. Linear's own state names (Todo, In Progress, In Review, Done) stay as Linear writes them.
+Jonatas Workflow is Jonatas's workflow for agents on a Maestri canvas: how work is defined, batched into a round, dispatched, and merged. These are its words; the roles, the templates, the plans, the tickets and the commits use no others. Linear's own state names (Todo, In Progress, In Review, Done) stay as Linear writes them.
 
 ## Language
 
 ### The round
 
 **Round**:
-One batch of work. It opens when Henok says "go" over a written manifest and closes when every item on that manifest is merged or waiting Henok and no slice is held, or when Henok says "close the round".
+One batch of work. It opens when Jonatas says "go" over a written manifest and closes when every item on that manifest is merged or waiting Jonatas and no slice is held, or when Jonatas says "close the round".
 _Avoid_: sprint, cycle, iteration, milestone
 
 **Manifest**:
-The ordered list of tickets a round runs: one cluster, in the order Henok gives, or the whole frontier in a high-autonomy round. The Definer writes it with Henok before "go".
+The ordered list of tickets a round runs: one cluster, in the order Jonatas gives, or the whole frontier in a high-autonomy round. The Definer writes it with Jonatas before "go".
 _Avoid_: queue, plan, to-do list
 
 **Cluster**:
@@ -27,15 +27,15 @@ What one executor runs: one plan, one worktree, one PR.
 _Avoid_: task, job, unit of work
 
 **In flight**:
-The state of a slice from dispatch until it is verified green or waiting Henok.
+The state of a slice from dispatch until it is verified green or waiting Jonatas.
 _Avoid_: running, active, in progress, WIP
 
-**Waiting Henok**:
-The state of an item whose next step is Henok's. A line for it exists in "for you", and its slot is free.
-_Avoid_: blocked, blocked on Henok, stuck
+**Waiting Jonatas**:
+The state of an item whose next step is Jonatas's. A line for it exists in "for you", and its slot is free.
+_Avoid_: blocked, blocked on Jonatas, stuck
 
 **Held slice**:
-A slice whose code paths share a source file with an earlier slice of the round. It is planned and dispatched only after the earlier slice's PR is merged; until then it is neither in flight nor waiting Henok, and it keeps the round open.
+A slice whose code paths share a source file with an earlier slice of the round. It is planned and dispatched only after the earlier slice's PR is merged; until then it is neither in flight nor waiting Jonatas, and it keeps the round open.
 _Avoid_: blocked slice, queued slice, stacked slice
 
 **Follow-up slice**:
@@ -47,11 +47,11 @@ At most three slices in flight at once; four only when the fourth belongs to a t
 _Avoid_: WIP limit, parallelism cap
 
 **High-autonomy round**:
-A round Henok asks for, whose manifest is the whole frontier the Definer closed with him, dispatched at once. The concurrency limit is suspended for that round alone.
+A round Jonatas asks for, whose manifest is the whole frontier the Definer closed with him, dispatched at once. The concurrency limit is suspended for that round alone.
 _Avoid_: autonomous mode, yolo mode, full autonomy
 
 **Emergency round**:
-The emergency slice Henok opens for one production emergency: its ticket is appended to the round note, dispatched ahead of the manifest order inside the concurrency limit, and closes with the round it joined; with no round open it is a one-item manifest.
+The emergency slice Jonatas opens for one production emergency: its ticket is appended to the round note, dispatched ahead of the manifest order inside the concurrency limit, and closes with the round it joined; with no round open it is a one-item manifest.
 _Avoid_: hotfix round, incident, firefight
 
 ### The notes
@@ -61,7 +61,7 @@ The standing note named "round" that holds the manifest of the open round. Outsi
 _Avoid_: manifest note, dated round note, the round file
 
 **State note**:
-The "state · <date>" note written in the logs stack when a round closes: what merged, what waits Henok, what is blocked and why, what was measured, what did not finish, the manifest itself, and a short retro: what to keep and what to change in the workflow.
+The "state · <date>" note written in the logs stack when a round closes: what merged, what waits Jonatas, what is blocked and why, what was measured, what did not finish, the manifest itself, and a short retro: what to keep and what to change in the workflow.
 _Avoid_: handoff, report, summary
 
 **Logs stack**:
@@ -69,15 +69,15 @@ The stack of notes that holds "log · <codename>", "state · <date>" and "defini
 _Avoid_: archive, journal, history note
 
 **Board**:
-The standing note with one line per slice of the open round, in manifest order. It is emptied at round close.
+The standing note with one line per slice of the open round, in manifest order, under a first line that links the hand-test guide. It is emptied at round close.
 _Avoid_: kanban, dashboard, status board
 
 **For you**:
-The standing note holding only what is still pending on Henok, one `- [ ]` checkbox per item. Henok ticks a line he did or answers it with `R: …`; the agent that wrote it records that on the ticket and deletes the line. No agent ever ticks a line for him.
+The standing note holding only what is still pending on Jonatas, one `- [ ]` checkbox per item. Jonatas ticks a line he did or answers it with `R: …`; the agent that wrote it records that on the ticket and deletes the line. No agent ever ticks a line for him.
 _Avoid_: inbox, to-do, blockers, action items
 
 **Findings**:
-The standing note where each finding is one line. It only grows during a round, every line is marked at round close, and the Definer empties it with Henok after.
+The standing note where each finding is one line. It only grows during a round, every line is marked at round close, and the Definer empties it with Jonatas after.
 _Avoid_: issues note, bug list, parking lot
 
 **How it works**:
@@ -85,7 +85,7 @@ The standing note that carries the rules of the workflow on the canvas, so the c
 _Avoid_: readme note, instructions, cheatsheet
 
 **Review and merge line**:
-The line in "for you" that hands Henok a verified, green PR: "Review and merge PR #N — <ticket> (unblocks: …)"; the Definer's glossary PR writes "glossary" in place of the ticket. Henok answers it by merging, or with "R: changes: <what>", which re-dispatches the slice from its plan.
+The line in "for you" that hands Jonatas a verified, green PR: "Review and merge PR #N — <ticket> (unblocks: …) · testar: <guide section>"; the Definer's glossary PR writes "glossary" in place of the ticket and links no section. Jonatas answers it by merging, or with "R: changes: <what>", which re-dispatches the slice from its plan.
 _Avoid_: approval, review request, merge task
 
 **Define: line**:
@@ -93,17 +93,21 @@ The line in "for you" that sends a manifest ticket back to the Definer, naming w
 _Avoid_: blocker note, clarification, question
 
 **Test by hand**:
-The block that closes a slice plan and that the PR body carries: what Henok does to see the change working and what he must see, or why there is nothing to test by hand.
+The block that closes a slice plan and that the PR body carries: what Jonatas does to see the change working and what he must see, or why there is nothing to test by hand. It seeds the PR's section in the hand-test guide.
 _Avoid_: manual test, QA, smoke test, Look line
+
+**Hand-test guide**:
+The artifact the Orchestrator publishes when a round opens, "Testes na mão · rodada <dd/mm>", linked from the board's first line: one section per PR that reached a Review and merge line, in the order to test and merge, each with what the ticket proposes, the commands that bring the environment up and which server it talks to, and the checkable steps with what Jonatas must see.
+_Avoid_: test plan, QA script, testing doc, the artifact
 
 ### People and terminals
 
 **Definer**:
-The terminal Henok talks to. It defines, publishes tickets, applies the ready-for-agent label, and writes the manifest with him. Definidor on the canvas.
+The terminal Jonatas talks to. It defines, publishes tickets, applies the ready-for-agent label, and writes the manifest with him. Definidor on the canvas.
 _Avoid_: planner, product manager, spec writer
 
 **Front door**:
-The Definer's standing as the single entry for everything Henok brings. Nothing enters the flow any other way.
+The Definer's standing as the single entry for everything Jonatas brings. Nothing enters the flow any other way.
 _Avoid_: intake, triage, entry point
 
 **Orchestrator**:
@@ -121,7 +125,7 @@ _Avoid_: round (that is the batch of work), interview, Q&A session
 ### Work items
 
 **Small ask**:
-Something Henok wants that carries no open decision. The Definer closes it in one exchange, without a grilling session, and it waits for the next manifest.
+Something Jonatas wants that carries no open decision. The Definer closes it in one exchange, without a grilling session, and it waits for the next manifest.
 _Avoid_: quick fix, tiny task, drive-by
 
 **Finding**:
@@ -129,7 +133,7 @@ Something an agent noticed that belongs neither to the slice it is on nor to cod
 _Avoid_: issue, bug report, side quest, TODO
 
 **Invariant**:
-A rule about an interface that must hold after every event, including a kill, a lost response and a retry. Every ticket names its invariants, Henok decides them, and each one is a test in the acceptance criterion.
+A rule about an interface that must hold after every event, including a kill, a lost response and a retry. Every ticket names its invariants, Jonatas decides them, and each one is a test in the acceptance criterion.
 _Avoid_: constraint, assumption, edge case
 
 **Origin**:
