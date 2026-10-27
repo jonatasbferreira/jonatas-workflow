@@ -49,11 +49,16 @@ For large, foggy work that does not fit one session, load `wayfinder` first. For
 
 ## How to write questions
 
-Jonatas answers without opening the code. Write every question so it can be answered without extra context:
+Jonatas answers without opening the code, and often without the item fresh in his mind. Every question round opens with a frame, written in the chat right before the AskUserQuestion call, in plain words and in this order:
 
-- self-contained: what happens today, in one or two sentences;
-- each option says what concretely changes and what it costs or breaks;
-- the recommended one and why, inside the question itself;
+- **the app**: which app or service the discussion is about, by the name Jonatas uses for it, and the screen or moment in it;
+- **what happens today**: what a person sees or does there now, in one or two sentences;
+- **the problem**: what is wrong or missing in that, and who it hurts;
+- **the solutions you propose**: each option, what concretely changes for the person and what it costs or breaks, the recommended one first and why.
+
+The dialog hides the chat, so each question restates the app and the problem in its first sentence. Then:
+
+- the recommended option and why, inside the question itself;
 - no file paths, no tables, no markdown: the options render as plain text;
 - short is not vague: cut repetition, never the context the decision needs.
 
