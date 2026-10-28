@@ -85,7 +85,7 @@ Effort goes up one level only when an executor fails or stalls: restart it, recr
 
 ## The slice plan
 
-Load `writing-plans` before writing each plan, and follow it. Write it to `~/.maestri/handoff/<branch>/plan.md`, outside the repository, because the worktree belongs to the executor. The header carries: repository, worktree (absolute path), source branch and target branch, ticket and spec, size, chosen model, the exact suite command with the expected number of tests, and the sibling slices it must not touch.
+Load `writing-plans` before writing each plan, and follow it. Write it to `~/.maestri/handoff/<branch>/plan.md`, outside the repository, because the worktree belongs to the executor. The header carries: repository, worktree (absolute path), source branch and target branch, ticket and spec, size, chosen model, the targeted test command (the slice's test files and the test files of every source file the slice touches) with the expected number of tests, and the sibling slices it must not touch.
 
 After the header: the glossary terms the slice uses; the defect or gap as measured; what "right" means; **the code paths the change governs, enumerated**; and the Testing Plan, written first, which is the acceptance criterion and the only part the executor never rewrites. Write it as numbered cases in the glossary's words, each phrased so it can be a test's name: the plan dies with the worktree, and those names carry it into the repository. The expected value of every test comes from the spec, never from the code. Every invariant the ticket names gets its own test, and a held slice's plan tests the transitions between it and the slice it waited for. After the Testing Plan, **Test by hand**: what Jonatas does to see the change working, where (portal, simulator, staging, a request sent by hand), the command that brings up each app the test needs and which server it talks to, and what he must see; or the sentence that there is nothing to test by hand, and why. It is the seed of the PR's section in the hand-test guide (below). The executor copies that block into the PR body. A defect the executor finds on one of the enumerated paths is the slice's to fix, without a question; off those paths it goes in the report, and you place it (below).
 
@@ -114,8 +114,8 @@ When an executor grills, copy the whole frontier into `for you`, one line per qu
 "Done" is a claim. Before advancing any state:
 
 - Read the whole diff.
-- Run the full suite, the formatter, the linter and the typechecker in the worktree.
-- Falsify the tests yourself; the report is a claim. In the worktree, with `BASE=$(git merge-base HEAD <the plan's source branch>)`, revert the change but keep its tests: `git diff $BASE HEAD -- <the diff's paths that are not tests> | git apply -R`. Run the suite and watch every test the slice added or changed go red; then `git checkout HEAD -- <the same paths>` and confirm `git status` is clean and the suite green. A test that stays green with the change gone goes back to the executor, named. A diff that touches only tests has nothing to revert, and your review says so.
+- Run in the worktree only the slice's test files, the test files of every source file the slice touched, the formatter, the linter, the typechecker and the repository's doctrine checks. Never the full suite: CI runs it.
+- Falsify the tests yourself; the report is a claim. In the worktree, with `BASE=$(git merge-base HEAD <the plan's source branch>)`, revert the change but keep its tests: `git diff $BASE HEAD -- <the diff's paths that are not tests> | git apply -R`. Run those test files and watch every test the slice added or changed go red; then `git checkout HEAD -- <the same paths>` and confirm `git status` is clean and those test files green. A test that stays green with the change gone goes back to the executor, named. A diff that touches only tests has nothing to revert, and your review says so.
 - Confirm every case of the Testing Plan has at least one test named for it, and no test covers two cases.
 - Run the review of `code-review` on opus with the spec and the ticket, on its three axes: standards, faithfulness to the spec, and attack. A diff that passes the tests and breaks the rule does not pass here, and neither does one an attack scenario breaks.
 - Confirm the decision was recorded: an ADR if irreversible, `CONTEXT.md` if a term changed.
@@ -126,6 +126,8 @@ When an executor grills, copy the whole frontier into `for you`, one line per qu
 
 Whatever fails goes back to the same executor with one precise sentence on what is wrong, via `maestri ask`. Never through an edit of yours.
 
+A PR gets at most two review rounds. A round is one pass of the checks above, the three-axis review included, that sends something back to the executor. From the third pass on, only a defect a team hits in normal use goes back; everything else, the reviewer's too, is a finding and the PR goes on.
+
 ## Defects in the round's own code
 
 Place every defect an executor or the reviewer reports, while the round is open. A defect in code a diff of this round changed belongs to the round:
@@ -133,7 +135,7 @@ Place every defect an executor or the reviewer reports, while the round is open.
 - its PR still open: it goes back to that slice's executor, like any failed verification;
 - its PR already merged: a follow-up slice on the same ticket. Append the defect and its tests to the plan on disk, cut a new branch from main, dispatch it to a fresh executor, and set the ticket back to In Progress. It is the same manifest item, in flight again and inside the concurrency limit.
 
-Record each such defect's origin in the slice's `log ·` note: it counts in the state note. Anything else is a finding. After the state note, every defect is a finding.
+After the second review round of a PR, a defect that is not hit in normal use is a finding, not a defect of the round. Record each such defect's origin in the slice's `log ·` note: it counts in the state note. Anything else is a finding. After the state note, every defect is a finding.
 
 ## The hand-test guide
 
