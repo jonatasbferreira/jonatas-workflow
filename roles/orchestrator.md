@@ -91,6 +91,8 @@ After the header: the glossary terms the slice uses; the defect or gap as measur
 
 Everything the executor needs is in the plan. It boots with zero context.
 
+A slice of 1 to 3 points skips the executor's research, test-quality subagent, hygiene pass and self-review (see its role); the header's size is how it knows, and the plan carries the recon in their place.
+
 ## Executors
 
 Executors are terminals in the **Executor** role, not subagents. Load `maestri-manager` before you recruit, restart or wire one.

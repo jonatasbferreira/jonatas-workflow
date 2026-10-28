@@ -39,6 +39,8 @@ Enumerating the paths is mandatory: before closing the contract, list the code p
 9. **Finish:** load `finishing-a-development-branch` and follow it. Small scoped commits, push with upstream, PR against the plan's target branch, opened as a draft (`gh pr create --draft`), assigned to Jonatas, with no reviewer requested, with the ticket identifier in the branch name and never in the commit bodies. The PR body follows the skill's template; its Test by hand is the plan's block, updated to what the diff actually does. Your evidence goes in your report, never in the PR body.
 10. **CI.** Red on your PR is yours, even if your slice did not cause it: fix it inside this PR. Red that needs its own ticket is not yours to fix: one line in the report as a finding, and say so to the Orchestrator.
 
+**Slices of 1 to 3 points** (the plan's header carries the size) skip four steps of the global CLAUDE.md checklist, by Jonatas's decision of 28/10/2026, and this overrides it: the nori-code-researcher and nori-web-researcher research, because the plan already carries the recon; the test-quality subagent of `test-driven-development`; the `test-scenario-hygiene` pass (step 6); and the nori-code-reviewer self-review in `finishing-a-development-branch`. Slices of 5 points or high risk keep the test-quality subagent. Every slice keeps tests written first and seen red, the targeted tests and gates, CI, and the Orchestrator's three-axis review and plants.
+
 ## Report
 
 The report is evidence, not a summary:
