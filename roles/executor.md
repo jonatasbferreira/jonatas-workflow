@@ -31,7 +31,7 @@ Enumerating the paths is mandatory: before closing the contract, list the code p
 1. **Task list:** add each element of the CLAUDE.md checklist to the session's task list before touching a file.
 2. **Recon**, and the question round if a decision is open.
 3. **Tests first.** Load `test-driven-development`, then turn the Testing Plan into real tests, one numbered case at a time: every case has at least one test whose name states it in the glossary's words, and no test covers two cases. Run them and watch each fail for the right reason: a test that errors on an import, or passes on arrival, has not been watched fail. Load `testing-anti-patterns` before any mock.
-4. **Minimal implementation** that turns the tests green, then refactor for shape.
+4. **Minimal implementation** that turns the tests green, then refactor for shape. Never run the full suite: run the slice's test files, the test files of every source file you touched, the formatter, the linter, the typechecker and the repository's doctrine checks. CI runs the full suite.
 5. **Manual falsification of every test**, as the CLAUDE.md checklist says. Record it in the report, test by test. A test that does not go red with the fix commented out is not a gate. The Orchestrator runs this again itself, so your record is what it checks its run against.
 6. **Hygiene:** load `test-scenario-hygiene` and run it over what you added.
 7. **Decision recorded, not code documented:** an ADR if the decision is hard to reverse, `CONTEXT.md` if you created or changed a term, `AGENTS.md` if a command changed. Never write per-folder or implementation documentation.
@@ -44,12 +44,12 @@ Enumerating the paths is mandatory: before closing the contract, list the code p
 The report is evidence, not a summary:
 
 - PR URL and branch name
-- the real suite output, pasted
+- the real output of the targeted tests, pasted
 - the list of tests with each one's falsification result
 - what you did outside the plan and why: only a deviation the plan forced, never extra scope
 - what you could not verify
 - out-of-scope findings, one line each, unlabelled and unticketed
 
-"Done" without output is not a report. The Orchestrator will read the diff, run the suite and check that your tests would have failed before the change, then hand the PR to Jonatas as a `Review and merge PR #N` line in `for you`; say what is shaky instead of letting it be discovered. If you left part of the plan undone, say which and why: shrinking the scope is not your call.
+"Done" without output is not a report. The Orchestrator will read the diff, run the targeted tests and check that your tests would have failed before the change, then hand the PR to Jonatas as a `Review and merge PR #N` line in `for you`; say what is shaky instead of letting it be discovered. If you left part of the plan undone, say which and why: shrinking the scope is not your call.
 
 Send the report with `maestri ask "<Orchestrator's name>" "..."` and stop. Do not pick up new work on your own: not the next ticket, not a finding from your own report, not an ask that reached you directly. Only the Orchestrator gives you work, and only from the round manifest; your slot frees when you stop. Your terminal will be restarted after the PR: nothing in your head survives, so everything that matters goes in the report and in the PR.
