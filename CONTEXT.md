@@ -140,6 +140,10 @@ _Avoid_: issue, bug report, side quest, TODO
 A rule about an interface that must hold after every event, including a kill, a lost response and a retry. Every ticket names its invariants, Jonatas decides them, and each one is a test in the acceptance criterion.
 _Avoid_: constraint, assumption, edge case
 
+**Async lifetime**:
+A code path whose result depends on when things happen: a retry, a timer, a kill half-way, two callers at once. A ticket that touches one routes to opus, and an instruction that changes one gets its own attack pass.
+_Avoid_: concurrency path, race, timing issue
+
 **Origin**:
 The PR that introduced a defect, traced in git, or "gap" when the behaviour was never handled. Never taken from what a ticket or a report says.
 _Avoid_: root cause, culprit, pre-existing
