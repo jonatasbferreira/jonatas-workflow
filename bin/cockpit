@@ -1,0 +1,166 @@
+#!/bin/bash
+data="${MAESTRI_DATA_DIR:-$HOME/.maestri}"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/jonatas-workflow/cockpit"
+claude_dirs="${COCKPIT_CLAUDE_DIRS:-$HOME/.claude:$HOME/.claude-rea:$HOME/.claude-personal}"
+
+age() {
+  local s=$(( $1 ))
+  if [ "$s" -lt 0 ]; then s=0; fi
+  if [ "$s" -lt 60 ]; then echo "${s}s"
+  elif [ "$s" -lt 3600 ]; then echo "$((s / 60))m"
+  elif [ "$s" -lt 86400 ]; then echo "$((s / 3600))h"
+  else echo "$((s / 86400))d"; fi
+}
+
+pct() { printf '%.0f%%' "$1" 2>/dev/null || echo '?'; }
+
+header() {
+  local now f name u a seen=0
+  now=$(date +%s)
+  shopt -s dotglob
+  for f in "$state"/*.json; do
+    [ -f "$f" ] || continue
+    seen=1
+    name=$(basename "$f" .json)
+    jq -e . "$f" >/dev/null 2>&1 || { echo "claude $name  5h ?  7d ?"; continue; }
+    read -r a h d <<<"$(jq -r '[.updated_at // "-", .five_hour.used_percentage // "-", .seven_day.used_percentage // "-"] | @tsv' "$f")"
+    echo "claude $name  5h $([ "$h" != - ] && pct "$h" || echo '?') ($([ "$a" != - ] && age $((now - a)) || echo '?'))  7d $([ "$d" != - ] && pct "$d" || echo '?') ($([ "$a" != - ] && age $((now - a)) || echo '?'))"
+  done
+  [ "$seen" = 1 ] || echo "claude  5h ?  7d ?"
+  local cx="$data/usage/providers/.status.json"
+  local line
+  line=$(jq -r '.providers[]? | select(.id == "codex")
+    | [.lastSuccessAt // "-",
+       ((.meters[0].windows[]? | select(.ring == "session") | .usedPercent) // "-"),
+       ((.meters[0].windows[]? | select(.ring == "weekly") | .usedPercent) // "-")] | @tsv' "$cx" 2>/dev/null)
+  if [ -n "$line" ]; then
+    local at h d ts
+    IFS=$'\t' read -r at h d <<<"$line"
+    ts=$(date -d "$at" +%s 2>/dev/null)
+    echo "codex  5h $([ "$h" != - ] && pct "$h" || echo '?') ($([ -n "$ts" ] && age $((now - ts)) || echo '?'))  7d $([ "$d" != - ] && pct "$d" || echo '?') ($([ -n "$ts" ] && age $((now - ts)) || echo '?'))"
+  else
+    echo "codex  5h ?  7d ?"
+  fi
+}
+
+pending_question() {
+  tail -n 400 "$1" 2>/dev/null | jq -R 'fromjson? // empty' | jq -s -r '
+    ([.[] | select(.type == "assistant")] | last) as $last
+    | ([.[] | .message.content?[]? | select(.type == "tool_result") | .tool_use_id]) as $done
+    | if $last == null then "no"
+      elif ([$last.message.content[]? | select(.type == "tool_use" and .name == "AskUserQuestion" and ((.id) as $i | $done | index($i) | not))] | length) > 0
+      then "yes" else "no" end' 2>/dev/null
+}
+
+last_model() {
+  tail -n 400 "$1" 2>/dev/null | jq -R 'fromjson? // empty' | jq -s -r '[.[] | select(.type == "assistant" and .message.model != null) | .message.model] | last // empty' 2>/dev/null
+}
+
+context_tokens() {
+  tail -n 400 "$1" 2>/dev/null | jq -R 'fromjson? // empty' | jq -s -r '
+    [.[] | select(.type == "assistant" and .message.usage != null) | .message.usage] | last
+    | if . == null then "" else (.input_tokens // 0) + (.cache_creation_input_tokens // 0) + (.cache_read_input_tokens // 0) end' 2>/dev/null
+}
+
+find_session() {
+  local cwd="$1" dir f best="" best_at=-1 at
+  local IFS=:
+  for dir in $claude_dirs; do
+    for f in "$dir"/sessions/*.json; do
+      [ -f "$f" ] || continue
+      at=$(jq -r --arg cwd "$cwd" 'select(.cwd == $cwd) | .statusUpdatedAt // 0' "$f" 2>/dev/null)
+      [ -n "$at" ] || continue
+      if [ "$at" -gt "$best_at" ]; then best_at=$at; best="$dir|$f"; fi
+    done
+  done
+  echo "$best"
+}
+
+agent_row() {
+  local project="$1" ws="$2" name="$3" type="$4" cmd="$5" role="$6" wd="$7" roles="$8"
+  local now model rolename ticket tstate points foryou since ctx star
+  now=$(date +%s)
+  model=$(sed -n 's/.*--model[ =]\([^ ]*\).*/\1/p' <<<"$cmd")
+  [ "$role" = - ] && role=none
+  [ -n "$model" ] || model='?'
+  rolename=$(jq -r --arg r "$(tr 'A-Z' 'a-z' <<<"$role")" '.payload.rolePresets[]? | select((.id | ascii_downcase) == $r) | .name' "$roles" 2>/dev/null)
+  [ -n "$rolename" ] || rolename='?'
+
+  ticket='?'; tstate='?'; points='?'
+  local board="$ws/notes/board.md"
+  if [ -f "$board" ]; then
+    ticket='-'; tstate='-'; points='-'
+    local l
+    l=$(awk -F' · ' -v n="$name" '$1 == n { print; exit }' "$board")
+    if [ -n "$l" ]; then
+      IFS='|' read -r ticket tstate points <<<"$(awk -F' · ' '{ printf "%s|%s|%s", $2, $3, ($5 == "" ? "?" : $5) }' <<<"$l")"
+    fi
+  fi
+
+  foryou='?'
+  [ -f "$ws/notes/for you.md" ] && foryou=$(grep -c -- '^- \[ \]' "$ws/notes/for you.md")
+
+  since='?'; ctx='?'; star=''
+  if [ "$type" = claude_code ]; then
+    local found dir sf sid cwd tr tokens size account
+    cwd="$wd/.maestri/roles/$(tr 'A-Z' 'a-z' <<<"$role")"
+    found=$(find_session "$cwd")
+    if [ -n "$found" ]; then
+      dir=${found%%|*}; sf=${found#*|}
+      local at
+      at=$(jq -r '.statusUpdatedAt // empty' "$sf" 2>/dev/null)
+      [ -n "$at" ] && since=$(age $((now - at / 1000)))
+      sid=$(jq -r '.sessionId // empty' "$sf" 2>/dev/null)
+      tr="$dir/projects/$(sed 's/[^A-Za-z0-9]/-/g' <<<"$cwd")/$sid.jsonl"
+      if [ -n "$sid" ] && [ -f "$tr" ]; then
+        tokens=$(context_tokens "$tr")
+        account=$(basename "$dir")
+        size=$(jq -r --arg m "$(last_model "$tr")" '.context_window_sizes[$m] // empty' "$state/$account.json" 2>/dev/null)
+        [ -n "$tokens" ] && [ -n "$size" ] && ctx=$(pct "$(awk -v t="$tokens" -v s="$size" 'BEGIN { print t * 100 / s }')")
+        [ "$(pending_question "$tr")" = yes ] && star='*'
+      fi
+    fi
+  fi
+  local need="$foryou"
+  [ -n "$star" ] && need="*$foryou"
+
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$project" "$name" "$rolename" "$model" "$ticket" "$tstate" "$points" "$since" "$ctx" "$need"
+}
+
+rows() {
+  local roles="$data/preferences.json" w
+  for w in "$data"/workspaces/*/; do
+    [ -f "$w/workspace.json" ] || continue
+    w=${w%/}
+    local list
+    if ! list=$(jq -r 'def dash: if . == null or . == "" then "-" else . end;
+        .payload as $p | $p.nodes[]? | .content.terminal._0? // empty
+        | select(.agentType != null and .status == "running")
+        | [$p.name, .name, .agentType, (.command | dash), (.assignedRoleId | dash), (.workingDirectory | dash)] | @tsv' "$w/workspace.json" 2>/dev/null); then
+      printf '?\t?\t?\t?\t?\t?\t?\t?\t?\t?\n'
+      continue
+    fi
+    local project name type cmd role wd
+    while IFS=$'\t' read -r project name type cmd role wd; do
+      [ -n "$name" ] || continue
+      agent_row "$project" "$w" "$name" "$type" "$cmd" "$role" "$wd" "$roles"
+    done <<<"$list"
+  done
+}
+
+render() {
+  header
+  echo
+  { printf 'PROJECT\tAGENT\tROLE\tMODEL\tTICKET\tSTATE\tPTS\tIN STATE\tCTX\tNEEDS YOU\n'; rows; } | column -t -s $'\t'
+}
+
+if [ "${1:-}" = "--once" ]; then
+  render
+  exit 0
+fi
+
+while true; do
+  out=$(render)
+  printf '\033[H\033[2J%s\n' "$out"
+  sleep 5
+done

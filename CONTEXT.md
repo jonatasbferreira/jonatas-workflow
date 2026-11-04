@@ -126,6 +126,10 @@ _Avoid_: round (that is the batch of work), interview, Q&A session
 The review the bot posts on a PR in the shemaobt organisation once João is requested as reviewer, read thread by thread.
 _Avoid_: bot review, Joãozinho, reviewer comments
 
+**Cockpit**:
+The read-only list of every running agent terminal in Maestri, across all workspaces, with the plan limits on top. It shows; it never acts on an agent.
+_Avoid_: dashboard, monitor, control panel
+
 ### Work items
 
 **Small ask**:

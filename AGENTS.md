@@ -4,7 +4,7 @@ Jonatas Workflow is Jonatas's project-agnostic workflow for agents on a Maestri 
 
 No package manager: Markdown and bash.
 
-Tests: `bash test/setup-canvas-test.sh` and `bash test/hand-test-template-test.sh` (needs Google Chrome).
+Tests: `bash test/setup-canvas-test.sh`, `bash test/cockpit-test.sh` and `bash test/hand-test-template-test.sh` (needs Google Chrome).
 
 Roles in `roles/`, note and preset templates in `templates/`, the glossary in `CONTEXT.md`, the decisions in `docs/adr/`, the workflow in `docs/workflow.md`. Use the glossary's words in code, notes, tickets and commits.
 
