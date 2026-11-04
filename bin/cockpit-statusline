@@ -5,6 +5,8 @@ file="$dir/$account.json"
 mkdir -p "$dir"
 
 input=$(cat)
+exec 9>"$dir/.lock"
+flock 9
 old=$(cat "$file" 2>/dev/null)
 echo "$old" | jq -e type >/dev/null 2>&1 || old='{}'
 
@@ -15,8 +17,8 @@ new=$(printf '%s' "$input" | jq -c --argjson old "$old" --argjson now "$(date +%
        | .seven_day = ($in.rate_limits.seven_day // .seven_day // {} | {used_percentage, resets_at})
        | .updated_at = $now
     else . end
-  | if $in.context_window.context_window_size != null
-    then .context_window_size = $in.context_window.context_window_size else . end
+  | if $in.context_window.context_window_size != null and $in.model.id != null
+    then .context_window_sizes[$in.model.id] = $in.context_window.context_window_size else . end
 ' 2>/dev/null) || new=""
 [ -z "$new" ] && new="$old"
 

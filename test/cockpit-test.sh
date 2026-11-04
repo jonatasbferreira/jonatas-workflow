@@ -50,18 +50,18 @@ session() {
 
 transcript() {
   local cfg="$1" cwd="$2" sid="$3"
-  local dir="$cfg/projects/$(printf '%s' "$cwd" | tr '/.' '--')"
+  local dir="$cfg/projects/$(printf '%s' "$cwd" | sed 's/[^A-Za-z0-9]/-/g')"
   mkdir -p "$dir"
   cat > "$dir/$sid.jsonl"
 }
 
 usage_line() {
   jq -nc --argjson i "$1" --argjson c "$2" --argjson r "$3" \
-    '{type:"assistant",message:{usage:{input_tokens:$i,cache_creation_input_tokens:$c,cache_read_input_tokens:$r},content:[{type:"text",text:"ok"}]}}'
+    '{type:"assistant",message:{model:"m1",usage:{input_tokens:$i,cache_creation_input_tokens:$c,cache_read_input_tokens:$r},content:[{type:"text",text:"ok"}]}}'
 }
 
 state_file() {
-  jq -n --argjson at "$2" --argjson w "$3" '{five_hour:{used_percentage:12,resets_at:0},seven_day:{used_percentage:40,resets_at:0},context_window_size:$w,updated_at:$at}' > "$STATE/$1.json"
+  jq -n --argjson at "$2" --argjson w "$3" '{five_hour:{used_percentage:12,resets_at:0},seven_day:{used_percentage:40,resets_at:0},context_window_sizes:{m1:$w,m2:1000000},updated_at:$at}' > "$STATE/$1.json"
 }
 
 run() { bash "$ROOT/bin/cockpit" --once 2>&1; }
@@ -136,12 +136,12 @@ has "8 for you count of open lines" "$(row "$out" Aracati)" '3'
 
 reset
 workspace w1 "ProjA" "$(terminal Aracati claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-a-1")"
-payload='{"rate_limits":{"five_hour":{"used_percentage":12.4,"resets_at":1},"seven_day":{"used_percentage":40,"resets_at":2}},"context_window":{"context_window_size":200000}}'
+payload='{"rate_limits":{"five_hour":{"used_percentage":12.4,"resets_at":1},"seven_day":{"used_percentage":40,"resets_at":2}},"model":{"id":"m1"},"context_window":{"context_window_size":200000}}'
 printf '%s' "$payload" | CLAUDE_CONFIG_DIR="$T/claude-a" bash "$ROOT/bin/cockpit-statusline" > "$T/sl.out" 2>"$T/sl.err"
 check "9 statusline state file written" "$(test -f "$STATE/claude-a.json" && echo yes)" "yes"
 check "9 statusline prints one line" "$(wc -l < "$T/sl.out")" "1"
 out=$(run)
-has "9 header shows both percentages with the age" "$out" '12%.*(0s).*40%.*(0s)'
+has "9 header shows both percentages with the age" "$out" '12%.*([0-9]*s).*40%.*([0-9]*s)'
 check "9 no temp file left behind" "$(ls "$STATE" | grep -c tmp)" "0"
 
 printf '%s' '{"model":{"display_name":"x"}}' | CLAUDE_CONFIG_DIR="$T/claude-a" bash "$ROOT/bin/cockpit-statusline" > "$T/sl.out" 2>"$T/sl.err"
@@ -149,9 +149,34 @@ check "10 no rate_limits: exit code" "$?" "0"
 check "10 no rate_limits: no error output" "$(cat "$T/sl.err")" ""
 out=$(run)
 has "10 last reading is kept" "$out" '12%'
-check "10 context window size is kept" "$(jq .context_window_size "$STATE/claude-a.json")" "200000"
+check "10 context window size is kept" "$(jq .context_window_sizes.m1 "$STATE/claude-a.json")" "200000"
 printf 'not json' | CLAUDE_CONFIG_DIR="$T/claude-a" bash "$ROOT/bin/cockpit-statusline" >/dev/null 2>"$T/sl.err"
 check "10 garbage payload: no error output" "$(cat "$T/sl.err")" ""
+
+printf '%s' '{"model":{"id":"m2"},"context_window":{"context_window_size":1000000}}' | CLAUDE_CONFIG_DIR="$T/claude-a" bash "$ROOT/bin/cockpit-statusline" >/dev/null
+check "17 two models of one account keep their own window sizes" "$(jq -c '[.context_window_sizes.m1, .context_window_sizes.m2]' "$STATE/claude-a.json")" "[200000,1000000]"
+
+rm -f "$STATE"/*.json
+printf '%s' '{"rate_limits":{"seven_day":{"used_percentage":77,"resets_at":2}}}' | CLAUDE_CONFIG_DIR="$T/.claude-hidden" bash "$ROOT/bin/cockpit-statusline" >/dev/null
+out=$(run)
+has "18 a dot-named account shows in the header" "$out" 'claude .claude-hidden'
+has "18 only seven_day: the value stays under 7d" "$out" '5h ? .*7d 77%'
+
+reset
+CWD="$T/code/Caso Clinico/proj-1/.maestri/roles/aaaa-exec"
+workspace w1 "ProjA" "$(terminal Aracati claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/Caso Clinico/proj-1")"
+session "$T/claude-a" s1 "$CWD" busy $(( NOW * 1000 ))
+transcript "$T/claude-a" "$CWD" s1 <<EOF
+$(usage_line 2 1000 99000)
+EOF
+state_file claude-a "$NOW" 200000
+out=$(run)
+has "19 a working directory with a space still finds the transcript" "$(row "$out" Aracati)" '50%'
+
+reset
+workspace w1 "ProjA" "$(terminal Aracati claude_code running '' AAAA-EXEC "$T/code/proj-a-1")"
+out=$(run)
+check "20 an empty command keeps the role in its column" "$(row "$out" Aracati | awk '{print $3}')" "Executor"
 
 reset
 cat > "$T/maestri/usage/providers/.status.json" <<EOF
@@ -169,7 +194,7 @@ mkdir -p "$T/maestri/workspaces/bad"; echo '{broken' > "$T/maestri/workspaces/ba
 out=$(run)
 check "12 exit code with a malformed workspace" "$?" "0"
 has "12 healthy workspace still prints" "$out" 'ProjA.*Aracati'
-has "12 malformed workspace shows ?" "$(row "$out" '^?')" '?'
+check "12 malformed workspace shows one ? row" "$(printf '%s\n' "$out" | grep -c '^?')" "1"
 
 reset
 workspace w1 "ProjA" "$(terminal Aracati claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-a-1")"
@@ -188,7 +213,7 @@ session "$T/claude-a" s1 "$CWD" busy $(( NOW * 1000 ))
 transcript "$T/claude-a" "$CWD" s1 <<EOF
 {"type":"assistant","message":{"content":[{"type":"text","text":"x"}],"usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}},"token":"SECRET-TOKEN"}
 EOF
-printf '%s' '{"apiKey":"SECRET-APIKEY","token":"SECRET-TOKEN","credentials":{"password":"SECRET-PASS"},"rate_limits":{"five_hour":{"used_percentage":5,"resets_at":1},"seven_day":{"used_percentage":6,"resets_at":2}},"context_window":{"context_window_size":1000}}' \
+printf '%s' '{"apiKey":"SECRET-APIKEY","token":"SECRET-TOKEN","credentials":{"password":"SECRET-PASS"},"rate_limits":{"five_hour":{"used_percentage":5,"resets_at":1},"seven_day":{"used_percentage":6,"resets_at":2}},"model":{"id":"m1"},"context_window":{"context_window_size":1000}}' \
   | CLAUDE_CONFIG_DIR="$T/claude-a" bash "$ROOT/bin/cockpit-statusline" > "$T/sl.out"
 out=$(run)
 all="$out$(cat "$T/sl.out" "$STATE"/*.json)"

@@ -17,26 +17,27 @@ pct() { printf '%.0f%%' "$1" 2>/dev/null || echo '?'; }
 header() {
   local now f name u a seen=0
   now=$(date +%s)
+  shopt -s dotglob
   for f in "$state"/*.json; do
     [ -f "$f" ] || continue
     seen=1
     name=$(basename "$f" .json)
     jq -e . "$f" >/dev/null 2>&1 || { echo "claude $name  5h ?  7d ?"; continue; }
-    read -r a h d <<<"$(jq -r '[.updated_at // "", .five_hour.used_percentage // "", .seven_day.used_percentage // ""] | @tsv' "$f")"
-    echo "claude $name  5h $([ -n "$h" ] && pct "$h" || echo '?') ($([ -n "$a" ] && age $((now - a)) || echo '?'))  7d $([ -n "$d" ] && pct "$d" || echo '?') ($([ -n "$a" ] && age $((now - a)) || echo '?'))"
+    read -r a h d <<<"$(jq -r '[.updated_at // "-", .five_hour.used_percentage // "-", .seven_day.used_percentage // "-"] | @tsv' "$f")"
+    echo "claude $name  5h $([ "$h" != - ] && pct "$h" || echo '?') ($([ "$a" != - ] && age $((now - a)) || echo '?'))  7d $([ "$d" != - ] && pct "$d" || echo '?') ($([ "$a" != - ] && age $((now - a)) || echo '?'))"
   done
   [ "$seen" = 1 ] || echo "claude  5h ?  7d ?"
   local cx="$data/usage/providers/.status.json"
   local line
   line=$(jq -r '.providers[]? | select(.id == "codex")
-    | [.lastSuccessAt // "",
-       (.meters[0].windows[]? | select(.ring == "session") | .usedPercent) // "",
-       (.meters[0].windows[]? | select(.ring == "weekly") | .usedPercent) // ""] | @tsv' "$cx" 2>/dev/null)
+    | [.lastSuccessAt // "-",
+       ((.meters[0].windows[]? | select(.ring == "session") | .usedPercent) // "-"),
+       ((.meters[0].windows[]? | select(.ring == "weekly") | .usedPercent) // "-")] | @tsv' "$cx" 2>/dev/null)
   if [ -n "$line" ]; then
     local at h d ts
     IFS=$'\t' read -r at h d <<<"$line"
     ts=$(date -d "$at" +%s 2>/dev/null)
-    echo "codex  5h $([ -n "$h" ] && pct "$h" || echo '?') ($([ -n "$ts" ] && age $((now - ts)) || echo '?'))  7d $([ -n "$d" ] && pct "$d" || echo '?') ($([ -n "$ts" ] && age $((now - ts)) || echo '?'))"
+    echo "codex  5h $([ "$h" != - ] && pct "$h" || echo '?') ($([ -n "$ts" ] && age $((now - ts)) || echo '?'))  7d $([ "$d" != - ] && pct "$d" || echo '?') ($([ -n "$ts" ] && age $((now - ts)) || echo '?'))"
   else
     echo "codex  5h ?  7d ?"
   fi
@@ -49,6 +50,10 @@ pending_question() {
     | if $last == null then "no"
       elif ([$last.message.content[]? | select(.type == "tool_use" and .name == "AskUserQuestion" and ((.id) as $i | $done | index($i) | not))] | length) > 0
       then "yes" else "no" end' 2>/dev/null
+}
+
+last_model() {
+  tail -n 400 "$1" 2>/dev/null | jq -R 'fromjson? // empty' | jq -s -r '[.[] | select(.type == "assistant" and .message.model != null) | .message.model] | last // empty' 2>/dev/null
 }
 
 context_tokens() {
@@ -76,6 +81,7 @@ agent_row() {
   local now model rolename ticket tstate points foryou since ctx star
   now=$(date +%s)
   model=$(sed -n 's/.*--model[ =]\([^ ]*\).*/\1/p' <<<"$cmd")
+  [ "$role" = - ] && role=none
   [ -n "$model" ] || model='?'
   rolename=$(jq -r --arg r "$(tr 'A-Z' 'a-z' <<<"$role")" '.payload.rolePresets[]? | select((.id | ascii_downcase) == $r) | .name' "$roles" 2>/dev/null)
   [ -n "$rolename" ] || rolename='?'
@@ -105,11 +111,11 @@ agent_row() {
       at=$(jq -r '.statusUpdatedAt // empty' "$sf" 2>/dev/null)
       [ -n "$at" ] && since=$(age $((now - at / 1000)))
       sid=$(jq -r '.sessionId // empty' "$sf" 2>/dev/null)
-      tr="$dir/projects/$(tr '/.' '--' <<<"$cwd")/$sid.jsonl"
+      tr="$dir/projects/$(sed 's/[^A-Za-z0-9]/-/g' <<<"$cwd")/$sid.jsonl"
       if [ -n "$sid" ] && [ -f "$tr" ]; then
         tokens=$(context_tokens "$tr")
         account=$(basename "$dir")
-        size=$(jq -r '.context_window_size // empty' "$state/$account.json" 2>/dev/null)
+        size=$(jq -r --arg m "$(last_model "$tr")" '.context_window_sizes[$m] // empty' "$state/$account.json" 2>/dev/null)
         [ -n "$tokens" ] && [ -n "$size" ] && ctx=$(pct "$(awk -v t="$tokens" -v s="$size" 'BEGIN { print t * 100 / s }')")
         [ "$(pending_question "$tr")" = yes ] && star='*'
       fi
@@ -127,9 +133,10 @@ rows() {
     [ -f "$w/workspace.json" ] || continue
     w=${w%/}
     local list
-    if ! list=$(jq -r '.payload as $p | $p.nodes[]? | .content.terminal._0? // empty
+    if ! list=$(jq -r 'def dash: if . == null or . == "" then "-" else . end;
+        .payload as $p | $p.nodes[]? | .content.terminal._0? // empty
         | select(.agentType != null and .status == "running")
-        | [$p.name, .name, .agentType, .command, .assignedRoleId, .workingDirectory] | @tsv' "$w/workspace.json" 2>/dev/null); then
+        | [$p.name, .name, .agentType, (.command | dash), (.assignedRoleId | dash), (.workingDirectory | dash)] | @tsv' "$w/workspace.json" 2>/dev/null); then
       printf '?\t?\t?\t?\t?\t?\t?\t?\t?\t?\n'
       continue
     fi
