@@ -11,10 +11,16 @@ old=$(cat "$file" 2>/dev/null)
 echo "$old" | jq -e type >/dev/null 2>&1 || old='{}'
 
 new=$(printf '%s' "$input" | jq -c --argjson old "$old" --argjson now "$(date +%s)" '
+  def latest($new; $was):
+    (($new.resets_at // 0) - ($was.resets_at // 0)) as $gap
+    | if $was == null then $new
+      elif $gap < -60 then $was
+      elif $gap < 60 and ($was.used_percentage // 0) > ($new.used_percentage // 0) then $was
+      else $new end;
   . as $in | $old
   | if $in.rate_limits.five_hour.used_percentage != null or $in.rate_limits.seven_day.used_percentage != null
-    then .five_hour = ($in.rate_limits.five_hour // .five_hour // {} | {used_percentage, resets_at})
-       | .seven_day = ($in.rate_limits.seven_day // .seven_day // {} | {used_percentage, resets_at})
+    then .five_hour = (latest($in.rate_limits.five_hour // .five_hour // {}; .five_hour) | {used_percentage, resets_at})
+       | .seven_day = (latest($in.rate_limits.seven_day // .seven_day // {}; .seven_day) | {used_percentage, resets_at})
        | .updated_at = $now
     else . end
   | if $in.context_window.context_window_size != null and $in.model.id != null

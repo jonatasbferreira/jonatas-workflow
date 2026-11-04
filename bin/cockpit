@@ -1,4 +1,5 @@
 #!/bin/bash
+export LC_ALL=C.UTF-8
 data="${MAESTRI_DATA_DIR:-$HOME/.maestri}"
 state="${XDG_STATE_HOME:-$HOME/.local/state}/jonatas-workflow/cockpit"
 claude_dirs="${COCKPIT_CLAUDE_DIRS:-$HOME/.claude:$HOME/.claude-rea:$HOME/.claude-personal}"
@@ -12,35 +13,96 @@ age() {
   else echo "$((s / 86400))d"; fi
 }
 
-pct() { printf '%.0f%%' "$1" 2>/dev/null || echo '?'; }
+if [ -t 1 ]; then
+  OFF=$'\e[0m' BOLD=$'\e[1m' DIM=$'\e[2m' RED=$'\e[38;5;203m' YEL=$'\e[38;5;221m' GRN=$'\e[38;5;114m' BLU=$'\e[38;5;75m' GRY=$'\e[38;5;244m'
+else
+  OFF='' BOLD='' DIM='' RED='' YEL='' GRN='' BLU='' GRY=''
+fi
 
-header() {
-  local now f name u a seen=0
+repeat() { local i; for ((i = 0; i < $2; i++)); do printf '%s' "$1"; done; }
+
+pad() { printf '%s' "$1"; repeat ' ' $(($2 - ${#1})); }
+
+num() { if [[ "$1" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then printf '%.0f' "$1"; else echo '?'; fi; }
+
+bar() {
+  local p="$1" width="$2" colour="$GRN" filled=0
+  if [ "$p" = '?' ]; then
+    printf '%s' "$GRY"; repeat '░' "$width"; printf '%s' "$OFF"
+    return
+  fi
+  [ "$p" -gt 100 ] && p=100
+  [ "$p" -ge 50 ] && colour="$YEL"
+  [ "$p" -ge 80 ] && colour="$RED"
+  filled=$((p * width / 100))
+  if [ "$p" -gt 0 ] && [ "$filled" -eq 0 ]; then filled=1; fi
+  printf '%s' "$colour"; repeat '█' "$filled"
+  printf '%s' "$GRY"; repeat '░' $((width - filled)); printf '%s' "$OFF"
+}
+
+meter() {
+  local p='?'
+  [ "$1" != - ] && p=$(num "$1")
+  printf '%s %3s' "$(bar "$p" "$2")" "$p$([ "$p" != '?' ] && echo '%')"
+}
+
+renewal() {
+  local at="$1" now="$2" text=''
+  if [ "$at" != - ] && [ "$at" -gt 0 ] 2>/dev/null; then
+    if [ "$at" -le "$now" ]; then text='renovou'
+    elif [ $((at - now)) -lt 86400 ]; then text="↻ $(date -d "@$at" +%H:%M)"
+    else text="↻ $(date -d "@$at" +%d/%m)"; fi
+  fi
+  pad "$text" 7
+}
+
+limit_rows() {
+  local now f name a h d r
   now=$(date +%s)
-  shopt -s dotglob
-  for f in "$state"/*.json; do
-    [ -f "$f" ] || continue
-    seen=1
-    name=$(basename "$f" .json)
-    jq -e . "$f" >/dev/null 2>&1 || { echo "claude $name  5h ?  7d ?"; continue; }
-    read -r a h d <<<"$(jq -r '[.updated_at // "-", .five_hour.used_percentage // "-", .seven_day.used_percentage // "-"] | @tsv' "$f")"
-    echo "claude $name  5h $([ "$h" != - ] && pct "$h" || echo '?') ($([ "$a" != - ] && age $((now - a)) || echo '?'))  7d $([ "$d" != - ] && pct "$d" || echo '?') ($([ "$a" != - ] && age $((now - a)) || echo '?'))"
+  shopt -s dotglob nullglob
+  local files=("$state"/*.json)
+  [ "${#files[@]}" -gt 0 ] || printf 'claude\t-\t-\t-\t-\n'
+  for f in "${files[@]}"; do
+    name=$(basename "$f" .json); name=${name#.}
+    if jq -e . "$f" >/dev/null 2>&1; then
+      IFS=$'\t' read -r a h d r <<<"$(jq -r '[.updated_at // "-", .five_hour.used_percentage // "-", .seven_day.used_percentage // "-", .five_hour.resets_at // "-"] | @tsv' "$f")"
+      printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$h" "$d" "$a" "$r"
+    else
+      printf '%s\t-\t-\t-\t-\n' "$name"
+    fi
   done
-  [ "$seen" = 1 ] || echo "claude  5h ?  7d ?"
-  local cx="$data/usage/providers/.status.json"
-  local line
+  local line at ts
   line=$(jq -r '.providers[]? | select(.id == "codex")
     | [.lastSuccessAt // "-",
        ((.meters[0].windows[]? | select(.ring == "session") | .usedPercent) // "-"),
-       ((.meters[0].windows[]? | select(.ring == "weekly") | .usedPercent) // "-")] | @tsv' "$cx" 2>/dev/null)
+       ((.meters[0].windows[]? | select(.ring == "weekly") | .usedPercent) // "-"),
+       ((.meters[0].windows[]? | select(.ring == "session") | .resetsAt) // "-")] | @tsv' "$data/usage/providers/.status.json" 2>/dev/null)
   if [ -n "$line" ]; then
-    local at h d ts
-    IFS=$'\t' read -r at h d <<<"$line"
-    ts=$(date -d "$at" +%s 2>/dev/null)
-    echo "codex  5h $([ "$h" != - ] && pct "$h" || echo '?') ($([ -n "$ts" ] && age $((now - ts)) || echo '?'))  7d $([ "$d" != - ] && pct "$d" || echo '?') ($([ -n "$ts" ] && age $((now - ts)) || echo '?'))"
+    IFS=$'\t' read -r at h d r <<<"$line"
+    ts=$(date -d "$at" +%s 2>/dev/null) || ts=-
+    r=$(date -d "$r" +%s 2>/dev/null) || r=-
+    printf 'codex\t%s\t%s\t%s\t%s\n' "$h" "$d" "$ts" "$r"
   else
-    echo "codex  5h ?  7d ?"
+    printf 'codex\t-\t-\t-\t-\n'
   fi
+}
+
+header() {
+  local now rows w=0 width=16 name h d a r seen
+  now=$(date +%s)
+  [ "$cols" -lt 90 ] && width=8
+  mapfile -t rows < <(limit_rows)
+  for seen in "${rows[@]}"; do
+    name=${seen%%$'\t'*}
+    [ "${#name}" -gt "$w" ] && w=${#name}
+  done
+  for seen in "${rows[@]}"; do
+    IFS=$'\t' read -r name h d a r <<<"$seen"
+    seen='?'
+    [[ "$a" =~ ^[0-9]+$ ]] && seen=$(age $((now - a)))
+    printf '  %s %s5h%s %s  %s%s  %s%s   %s7d%s %s\n' "$(pad "$name" "$w")" "$DIM" "$OFF" "$(meter "$h" "$width")" \
+      "$DIM" "$(renewal "$r" "$now")" "$(pad "$seen" 3)" "$OFF" "$DIM" "$OFF" "$(meter "$d" "$width")"
+  done
 }
 
 pending_question() {
@@ -63,26 +125,30 @@ context_tokens() {
 }
 
 find_session() {
-  local cwd="$1" dir f best="" best_at=-1 at
+  local cwd="$1" dir f best="" best_at=-1 at pid
   local IFS=:
   for dir in $claude_dirs; do
     for f in "$dir"/sessions/*.json; do
       [ -f "$f" ] || continue
-      at=$(jq -r --arg cwd "$cwd" 'select(.cwd == $cwd) | .statusUpdatedAt // 0' "$f" 2>/dev/null)
+      IFS=' ' read -r at pid <<<"$(jq -r --arg cwd "$cwd" 'select(.cwd == $cwd) | "\(.statusUpdatedAt // 0) \(.pid // 0)"' "$f" 2>/dev/null)"
       [ -n "$at" ] || continue
-      if [ "$at" -gt "$best_at" ]; then best_at=$at; best="$dir|$f"; fi
+      kill -0 "$pid" 2>/dev/null || continue
+      if [ "$at" -gt "$best_at" ] 2>/dev/null; then best_at=$at; best="$dir|$f"; fi
     done
   done
   echo "$best"
 }
 
+translate() {
+  sed -e 's/^implementing/implementando/' -e 's/^reviewing/revisando/' -e 's/^merged/mergeado/' \
+      -e 's/^held behind/aguardando/' -e 's/^PR open/PR aberto/' -e 's/^recon/reconhecimento/' <<<"$1"
+}
+
 agent_row() {
-  local project="$1" ws="$2" name="$3" type="$4" cmd="$5" role="$6" wd="$7" roles="$8"
+  local project="$1" ws="$2" name="$3" type="$4" cmd="$5" role="$6" cwd="$7" found="$8" roles="$9"
   local now model rolename ticket tstate points foryou since ctx star
   now=$(date +%s)
   model=$(sed -n 's/.*--model[ =]\([^ ]*\).*/\1/p' <<<"$cmd")
-  [ "$role" = - ] && role=none
-  [ -n "$model" ] || model='?'
   rolename=$(jq -r --arg r "$(tr 'A-Z' 'a-z' <<<"$role")" '.payload.rolePresets[]? | select((.id | ascii_downcase) == $r) | .name' "$roles" 2>/dev/null)
   [ -n "$rolename" ] || rolename='?'
 
@@ -94,65 +160,174 @@ agent_row() {
     l=$(awk -F' · ' -v n="$name" '$1 == n { print; exit }' "$board")
     if [ -n "$l" ]; then
       IFS='|' read -r ticket tstate points <<<"$(awk -F' · ' '{ printf "%s|%s|%s", $2, $3, ($5 == "" ? "?" : $5) }' <<<"$l")"
+      ticket=${ticket##*/}
+      tstate=$(translate "$tstate")
     fi
   fi
 
   foryou='?'
   [ -f "$ws/notes/for you.md" ] && foryou=$(grep -c -- '^- \[ \]' "$ws/notes/for you.md")
 
-  since='?'; ctx='?'; star=''
-  if [ "$type" = claude_code ]; then
-    local found dir sf sid cwd tr tokens size account
-    cwd="$wd/.maestri/roles/$(tr 'A-Z' 'a-z' <<<"$role")"
-    found=$(find_session "$cwd")
-    if [ -n "$found" ]; then
-      dir=${found%%|*}; sf=${found#*|}
-      local at
-      at=$(jq -r '.statusUpdatedAt // empty' "$sf" 2>/dev/null)
-      [ -n "$at" ] && since=$(age $((now - at / 1000)))
-      sid=$(jq -r '.sessionId // empty' "$sf" 2>/dev/null)
-      tr="$dir/projects/$(sed 's/[^A-Za-z0-9]/-/g' <<<"$cwd")/$sid.jsonl"
-      if [ -n "$sid" ] && [ -f "$tr" ]; then
-        tokens=$(context_tokens "$tr")
-        account=$(basename "$dir")
-        size=$(jq -r --arg m "$(last_model "$tr")" '.context_window_sizes[$m] // empty' "$state/$account.json" 2>/dev/null)
-        [ -n "$tokens" ] && [ -n "$size" ] && ctx=$(pct "$(awk -v t="$tokens" -v s="$size" 'BEGIN { print t * 100 / s }')")
-        [ "$(pending_question "$tr")" = yes ] && star='*'
-      fi
+  since='?'; ctx='?'; star='-'
+  if [ -n "$found" ]; then
+    local dir sf sid tr tokens size account at status last
+    dir=${found%%|*}; sf=${found#*|}
+    IFS=$'\t' read -r at status sid <<<"$(jq -r '[.statusUpdatedAt // "-", .status // "-", .sessionId // "-"] | @tsv' "$sf" 2>/dev/null)"
+    [[ "$at" =~ ^[0-9]+$ ]] && since=$(age $((now - at / 1000)))
+    case "$tstate/$status" in
+      [-?]/busy) tstate='trabalhando' ;;
+      [-?]/idle) tstate='parado' ;;
+      [-?]/shell) tstate='rodando comando' ;;
+    esac
+    tr="$dir/projects/$(sed 's/[^A-Za-z0-9]/-/g' <<<"$cwd")/$sid.jsonl"
+    if [ -f "$tr" ]; then
+      tokens=$(context_tokens "$tr")
+      last=$(last_model "$tr")
+      account=$(basename "$dir")
+      size=$(jq -r --arg m "$last" '.context_window_sizes[$m] // empty' "$state/$account.json" 2>/dev/null)
+      [ -n "$tokens" ] && [ -n "$size" ] && ctx=$(awk -v t="$tokens" -v s="$size" 'BEGIN { printf "%.0f", t * 100 / s }')
+      [ "$(pending_question "$tr")" = yes ] && star='!'
+      [ -n "$model" ] || model=$(sed -e 's/^claude-//' -e 's/-[0-9].*//' <<<"$last")
     fi
   fi
-  local need="$foryou"
-  [ -n "$star" ] && need="*$foryou"
+  [ -n "$model" ] || model='?'
+  if [ "$ticket" = - ] || [ "$ticket" = '?' ]; then
+    case "$rolename" in Executor|'?') ;; *) ticket="$rolename" ;; esac
+  fi
 
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$project" "$name" "$rolename" "$model" "$ticket" "$tstate" "$points" "$since" "$ctx" "$need"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$project" "$name" "$model" "$ticket" "$tstate" "$points" "$since" "$ctx" "$star" "$foryou"
+}
+
+any_session() {
+  local dir f IFS=:
+  for dir in $claude_dirs; do
+    for f in "$dir"/sessions/*.json; do
+      [ -f "$f" ] && return 0
+    done
+  done
+  return 1
 }
 
 rows() {
-  local roles="$data/preferences.json" w
+  local roles="$data/preferences.json" w sessions=no
+  any_session && sessions=yes
   for w in "$data"/workspaces/*/; do
     [ -f "$w/workspace.json" ] || continue
     w=${w%/}
     local list
     if ! list=$(jq -r 'def dash: if . == null or . == "" then "-" else . end;
         .payload as $p | $p.nodes[]? | .content.terminal._0? // empty
-        | select(.agentType != null and .status == "running")
-        | [$p.name, .name, .agentType, (.command | dash), (.assignedRoleId | dash), (.workingDirectory | dash)] | @tsv' "$w/workspace.json" 2>/dev/null); then
-      printf '?\t?\t?\t?\t?\t?\t?\t?\t?\t?\n'
+        | select(.agentType != null and .agentType != "generic_shell")
+        | [($p.name | dash), .name, .agentType, (.command | dash), (.assignedRoleId | dash),
+           ((.workingDirectory | dash) as $d | if $d == "-" then ($p.workingDirectory | dash) else $d end),
+           (.status | dash)] | @tsv' "$w/workspace.json" 2>/dev/null); then
+      printf '?\t?\t?\t?\t?\t?\t?\t?\t-\t?\n'
       continue
     fi
-    local project name type cmd role wd
-    while IFS=$'\t' read -r project name type cmd role wd; do
+    local project name type cmd role wd status cwd found
+    while IFS=$'\t' read -r project name type cmd role wd status; do
       [ -n "$name" ] || continue
-      agent_row "$project" "$w" "$name" "$type" "$cmd" "$role" "$wd" "$roles"
+      cwd=$wd
+      [ "$role" = - ] || cwd="$wd/.maestri/roles/$(tr 'A-Z' 'a-z' <<<"$role")"
+      found=''
+      [ "$type" = claude_code ] && found=$(find_session "$cwd")
+      if [ -z "$found" ]; then
+        [ "$status" = running ] || continue
+        [ "$type" != claude_code ] || [ "$sessions" = no ] || continue
+      fi
+      agent_row "$project" "$w" "$name" "$type" "$cmd" "$role" "$cwd" "$found" "$roles"
     done <<<"$list"
   done
 }
 
+state_mark() {
+  case "$1/$2" in
+    '!'/*) printf '%s!%s' "$RED" "$OFF" ;;
+    */mergeado*|*/closed*|*/done*) printf '%s✓%s' "$GRY" "$OFF" ;;
+    */revisando*) printf '%s◐%s' "$YEL" "$OFF" ;;
+    */aguardando*|*/parado*) printf '%s○%s' "$GRY" "$OFF" ;;
+    *'/?') printf '?' ;;
+    *) printf '%s●%s' "$GRN" "$OFF" ;;
+  esac
+}
+
 render() {
+  local all=() line project name model ticket tstate points since ctx star foryou
+  local -A hot=() open=() seen=()
+  local wn=5 wm=5 wt=6 ws=6 wp=0 pending=0 agents=0
+  mapfile -t all < <(rows)
+  for line in "${all[@]}"; do
+    IFS=$'\t' read -r project name model ticket tstate points since ctx star foryou <<<"$line"
+    [ "$name" = '?' ] || agents=$((agents + 1))
+    [ "$star" = '!' ] && { hot[$project]=1; pending=$((pending + 1)); }
+    if [ -z "${open[$project]:-}" ]; then
+      open[$project]=$foryou
+      [ "$foryou" = '?' ] || pending=$((pending + foryou))
+    fi
+    [ "${#name}" -gt "$wn" ] && wn=${#name}
+    [ "${#model}" -gt "$wm" ] && wm=${#model}
+    [ "${#ticket}" -gt "$wt" ] && wt=${#ticket}
+    [ "${#tstate}" -gt "$ws" ] && ws=${#tstate}
+    case "$points" in [0-9]*) [ "${#points}" -gt "$wp" ] && wp=${#points} ;; esac
+  done
+  local fixed=$((2 + 1 + 2 + wn + 2 + wm + 2 + wt + 2 + 2 + 4 + 2 + 8 + 1 + 4))
+  [ "$wp" -gt 0 ] && fixed=$((fixed + wp + 2))
+  local room=$((cols - fixed))
+  [ "$room" -lt 8 ] && room=8
+  [ "$ws" -gt "$room" ] && ws=$room
+  local total=$((fixed + ws))
+
+  printf '\n  %sCOCKPIT%s  %s%s · %s · %s%s\n\n' "$BOLD" "$OFF" "$DIM" "$(date +%H:%M)" \
+    "$agents agente$([ "$agents" = 1 ] || echo s)" \
+    "$pending pendência$([ "$pending" = 1 ] || echo s)" "$OFF"
   header
   echo
-  { printf 'PROJECT\tAGENT\tROLE\tMODEL\tTICKET\tSTATE\tPTS\tIN STATE\tCTX\tNEEDS YOU\n'; rows; } | column -t -s $'\t'
+
+  local turn order=()
+  for turn in hot rest; do
+    for line in "${all[@]}"; do
+      project=${line%%$'\t'*}
+      [ -n "${seen[$project]:-}" ] && continue
+      if [ "$turn" = rest ] || [ -n "${hot[$project]:-}" ]; then
+        seen[$project]=1
+        order+=("$project")
+      fi
+    done
+  done
+
+  local p heading rule mark want
+  for p in "${order[@]}"; do
+    heading=''
+    [ "${open[$p]}" = 0 ] || heading=" ${open[$p]} em for you"
+    rule=$((total - 2 - ${#p} - 1 - ${#heading}))
+    [ "$rule" -lt 3 ] && rule=3
+    printf '  %s%s%s%s %s%s%s%s\n' "$BOLD" "$BLU" "$p" "$OFF" "$GRY" "$(repeat '─' "$rule")" "$OFF" "$heading"
+    for want in '!' '-'; do
+      for line in "${all[@]}"; do
+        IFS=$'\t' read -r project name model ticket tstate points since ctx star foryou <<<"$line"
+        [ "$project" = "$p" ] && [ "$star" = "$want" ] || continue
+        [ "${#tstate}" -gt "$ws" ] && tstate="${tstate:0:$((ws - 1))}…"
+        mark=$(state_mark "$star" "$tstate")
+        local fade=''
+        case "$tstate" in mergeado*|closed*|done*) fade="$DIM" ;; esac
+        printf '  %s  %s%s%s  %s%s%s  %s  %s%s%s' "$mark" "$fade" "$(pad "$name" "$wn")" "$OFF" \
+          "$DIM" "$(pad "$model" "$wm")" "$OFF" "$(pad "$ticket" "$wt")" "$fade" "$(pad "$tstate" "$ws")" "$OFF"
+        [ "$wp" -gt 0 ] && printf '  %s' "$(pad "$points" "$wp")"
+        printf '  %s%4s%s  %s\n' "$DIM" "$since" "$OFF" "$(meter "$([ "$ctx" = '?' ] && echo - || echo "$ctx")" 8)"
+      done
+    done
+    echo
+  done
+  printf '  %s● ativo  ◐ revisão  ○ parado  ✓ terminou  ! precisa de você%s\n' "$DIM" "$OFF"
 }
+
+terminal_width() {
+  local w
+  w=${COLUMNS:-$({ stty size </dev/tty; } 2>/dev/null | cut -d' ' -f2)}
+  echo "${w:-100}"
+}
+
+cols=$(terminal_width)
 
 if [ "${1:-}" = "--once" ]; then
   render
@@ -160,6 +335,7 @@ if [ "${1:-}" = "--once" ]; then
 fi
 
 while true; do
+  cols=$(terminal_width)
   out=$(render)
   printf '\033[H\033[2J%s\n' "$out"
   sleep 5
