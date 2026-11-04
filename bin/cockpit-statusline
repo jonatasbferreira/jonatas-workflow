@@ -1,0 +1,28 @@
+#!/bin/bash
+account=$(basename "${CLAUDE_CONFIG_DIR:-.claude}")
+dir="${XDG_STATE_HOME:-$HOME/.local/state}/jonatas-workflow/cockpit"
+file="$dir/$account.json"
+mkdir -p "$dir"
+
+input=$(cat)
+old=$(cat "$file" 2>/dev/null)
+echo "$old" | jq -e type >/dev/null 2>&1 || old='{}'
+
+new=$(printf '%s' "$input" | jq -c --argjson old "$old" --argjson now "$(date +%s)" '
+  . as $in | $old
+  | if $in.rate_limits.five_hour.used_percentage != null or $in.rate_limits.seven_day.used_percentage != null
+    then .five_hour = ($in.rate_limits.five_hour // .five_hour // {} | {used_percentage, resets_at})
+       | .seven_day = ($in.rate_limits.seven_day // .seven_day // {} | {used_percentage, resets_at})
+       | .updated_at = $now
+    else . end
+  | if $in.context_window.context_window_size != null
+    then .context_window_size = $in.context_window.context_window_size else . end
+' 2>/dev/null) || new=""
+[ -z "$new" ] && new="$old"
+
+tmp=$(mktemp "$dir/.$account.XXXXXX")
+printf '%s\n' "$new" > "$tmp" && mv "$tmp" "$file" || rm -f "$tmp"
+
+printf '%s' "$new" | jq -r '
+  [(.five_hour.used_percentage // empty | "5h \(. | round)%"),
+   (.seven_day.used_percentage // empty | "7d \(. | round)%")] | join(" · ")' 2>/dev/null

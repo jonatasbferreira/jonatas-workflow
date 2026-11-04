@@ -1,0 +1,17 @@
+#!/bin/bash
+set -eu
+home="${CLAUDE_HOME:-$HOME/.claude}"
+file="$home/settings.json"
+script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cockpit-statusline"
+
+mkdir -p "$home"
+[ -f "$file" ] || echo '{}' > "$file"
+
+if jq -e 'has("statusLine")' "$file" >/dev/null; then
+  echo "statusLine already set in $file; left untouched"
+  exit 0
+fi
+
+tmp=$(mktemp "$home/.settings.XXXXXX")
+jq --arg c "$script" '.statusLine = {type: "command", command: $c}' "$file" > "$tmp" && mv "$tmp" "$file"
+echo "statusLine added to $file"

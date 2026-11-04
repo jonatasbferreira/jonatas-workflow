@@ -12,12 +12,13 @@ Jonatas's workflow for agents inside Maestri: the skillset, the terminal roles, 
 - `bin/` — scripts:
   - `install` — links `skillset/` into `~/.claude` and adds the Notification hook to `~/.claude/settings.json`. Idempotent; rerun after adding a skill.
   - `setup-canvas` — creates and wires the five standing notes and installs the routines. Rerun it in the Orchestrator terminal after any change to a routine prompt or to the `how it works` template: it recreates what is missing and refreshes those; the other notes hold live content and are never overwritten.
+  - `cockpit` — the Cockpit: a read-only list of every running agent terminal in Maestri, all workspaces, with the plan limits on top; refreshes every 5 seconds, `--once` prints once. `cockpit-statusline` is the Claude Code status line that records the Claude limits it reads; `CLAUDE_HOME=<dir> cockpit-install` adds it to that account's `settings.json`, once per account (`~/.claude`, `~/.claude-rea`, `~/.claude-personal`).
   - `notify-maestri.sh` — Claude Code Notification hook for Linux (`notify-send`): inside Maestri, clicking the notification raises the Maestri window.
 - `templates/` — initial content of the canvas notes and the preset text.
 - `docs/workflow.md` — how a round runs, from the manifest to Jonatas's merge and the state note.
 - `docs/adr/` — the decisions that shaped the workflow. Read them before changing a role.
 - `CONTEXT.md` — the glossary of the workflow itself: round, manifest, cluster, slice, finding, concurrency limit.
-- `test/` — `bash test/setup-canvas-test.sh`.
+- `test/` — `bash test/setup-canvas-test.sh`, `bash test/cockpit-test.sh`.
 - `archive/notes/` — the notes from the old workspaces, exported on 2026-09-08, to be mined for ADRs and glossary entries.
 
 ## How the work splits
