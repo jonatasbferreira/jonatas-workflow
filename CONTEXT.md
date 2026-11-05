@@ -127,7 +127,7 @@ The review the bot posts on a PR in the shemaobt organisation once João is requ
 _Avoid_: bot review, Joãozinho, reviewer comments
 
 **Cockpit**:
-The read-only list of every running agent terminal in Maestri, across all workspaces, with the plan limits on top. It shows; it never acts on an agent.
+The read-only list of every running agent terminal in Maestri, across all workspaces, with the plan limits on top, in two views of the same data: the terminal list and the local page. It shows; it never acts on an agent.
 _Avoid_: dashboard, monitor, control panel
 
 ### Work items

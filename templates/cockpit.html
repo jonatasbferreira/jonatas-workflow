@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cockpit de agentes</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0b1017; --panel: #101722; --row: #151e2b; --line: #263244; --fg: #dbe3ee; --dim: #8693a6;
+  --accent: #78a9f5; --ok: #57d68d; --warn: #f2c14e; --crit: #f26d6d; --ctx: #a78bfa; --track: #243042;
+  --hot: rgba(242, 193, 78, .13);
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.45 var(--mono); font-variant-numeric: tabular-nums; }
+.page { max-width: 1640px; margin: 0 auto; padding-block: 14px 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 12px; }
+header { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.brand { background: var(--accent); color: #0b1017; font-weight: 700; padding: 3px 12px; border-radius: 5px; letter-spacing: .06em; }
+.sub { color: var(--dim); min-width: 0; }
+.fail { color: var(--crit); border: 1px solid var(--crit); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
+.clock { margin-left: auto; border: 1px solid var(--line); border-radius: 5px; padding: 2px 10px; }
+.tiles { display: flex; flex-wrap: wrap; gap: 12px; }
+.tiles .tile { flex: 1 1 190px; box-sizing: border-box; }
+.tile, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; min-width: 0; }
+.tile { padding: 10px 14px; display: grid; gap: 2px; }
+.tile.alert { border-color: var(--warn); }
+.tile b { font-size: 21px; font-weight: 700; line-height: 1.25; }
+.tile small, .note { color: var(--dim); font-size: 12px; }
+.label { color: var(--dim); font-size: 12px; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: auto auto 1fr; gap: 12px; grid-template-areas: "quotas attention" "projects filters" "projects legend"; }
+.quotas { grid-area: quotas; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.attention { grid-area: attention; } .projects { grid-area: projects; } .filter-panel { grid-area: filters; } .legend-panel { grid-area: legend; align-self: start; }
+.stack { display: grid; gap: 12px; min-width: 0; }
+.panel { padding: 11px 14px; }
+h2 { margin: 0 0 9px; font-size: 14px; font-weight: 500; text-wrap: balance; }
+h2 span { color: var(--dim); font-weight: 400; }
+.quota { display: grid; grid-template-columns: 118px minmax(30px, 1fr) 38px 132px; gap: 9px; align-items: center; padding: 3px 0; }
+.quota .pct { text-align: right; font-weight: 500; }
+.quota .when { color: var(--dim); font-size: 12px; text-align: right; }
+.quota span:first-child { overflow-wrap: anywhere; }
+.bar { height: 9px; background: var(--track); border-radius: 2px; overflow: hidden; display: block; }
+.bar i { display: block; height: 100%; }
+.project-head { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+.project-head h2 { margin: 0; color: var(--accent); font-weight: 700; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+th { text-align: left; color: var(--dim); font-weight: 400; font-size: 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th, td { box-sizing: border-box; padding: 5px 6px; }
+td { border-bottom: 1px solid var(--row); overflow-wrap: anywhere; }
+.c-mark { width: 26px; } .c-name { width: 116px; } .c-model { width: 62px; } .c-task { width: 110px; } .c-pts { width: 38px; } .c-time { width: 50px; } .c-ctx { width: 132px; } .c-done { width: 196px; }
+tr:last-child td { border-bottom: 0; }
+tr.hot { background: var(--hot); }
+td.c-name { font-weight: 700; }
+td.c-model { color: var(--accent); }
+.c-time { text-align: right; }
+.mark { display: inline-block; width: 1.2em; text-align: center; font-weight: 700; }
+.running { color: var(--ok); } .review { color: var(--warn); } .stopped { color: var(--dim); } .done { color: var(--ok); } .blocked { color: var(--crit); } .needs { color: var(--warn); } .unknown { color: var(--dim); }
+.ctx { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; align-items: center; }
+.ctx span:last-child { text-align: right; }
+.steps { display: inline-flex; gap: 2px; vertical-align: middle; margin-right: 8px; }
+.steps i { width: 10px; height: 9px; background: var(--track); border-radius: 1px; }
+.steps i.on { background: var(--ok); }
+.steps-text { color: var(--dim); font-size: 12px; }
+.attn { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px 16px; }
+.attn li { display: grid; grid-template-columns: 1.3em 1fr; gap: 4px 6px; }
+.attn small { grid-column: 2; color: var(--dim); font-size: 12px; }
+.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; text-align: left; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.legend { display: grid; gap: 3px; font-size: 12px; color: var(--dim); }
+.empty { color: var(--dim); padding: 8px; }
+@media (max-width: 1240px) {
+  .main { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "quotas" "attention" "filters" "projects" "legend"; }
+  .tile { padding: 8px 11px; } .tile b { font-size: 18px; } .tile small { font-size: 11.5px; line-height: 1.35; }
+  .attn { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .filter-panel { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding-block: 7px; }
+  .filter-panel h2 { margin: 0; }
+  .filters { display: flex; flex-wrap: wrap; }
+  .legend-panel { padding-block: 7px; }
+  .legend-panel h2 { display: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 3px 16px; }
+}
+@media (max-width: 900px) {
+  .quotas { grid-template-columns: minmax(0, 1fr); }
+  thead { display: none; }
+  table, tbody { display: block; }
+  tr { display: grid; grid-template-columns: 20px minmax(0, 1fr) 64px 108px 44px; gap: 2px 10px; padding: 6px 4px; border-bottom: 1px solid var(--row); grid-template-areas: "mark name model task time" ". status status status pts" ". ctx done done done"; }
+  tr:last-child { border-bottom: 0; }
+  td, tr:last-child td { display: block; padding: 0; border: 0; width: auto; }
+  td.c-mark { grid-area: mark; } td.c-name { grid-area: name; } td.c-model { grid-area: model; } td.c-task { grid-area: task; } td.c-pts { grid-area: pts; text-align: right; white-space: nowrap; } td.c-status { grid-area: status; } td.c-time { grid-area: time; } td.c-ctx { grid-area: ctx; } td.c-done { grid-area: done; }
+  td.c-pts:not(:empty)::after { content: " pts"; color: var(--dim); }
+  td.c-ctx::before { content: "contexto"; color: var(--dim); font-size: 12px; margin-right: 8px; }
+  td.c-ctx { display: flex; align-items: center; min-width: 0; } .ctx { flex: 1; min-width: 0; }
+}
+@media (max-width: 560px) {
+  .tiles .tile { flex-basis: 150px; }
+  .quota { grid-template-columns: 1fr 42px; } .quota .bar { grid-column: 1 / -1; grid-row: 2; } .quota .when { grid-column: 1 / -1; text-align: left; }
+  tr { grid-template-columns: 20px minmax(0, 1fr) 64px 44px; grid-template-areas: "mark name model time" ". task task pts" ". status status status" ". ctx ctx ctx" ". done done done"; }
+}
+</style>
+
+<div class="page">
+  <header>
+    <span class="brand">COCKPIT</span>
+    <span class="sub">Agentes de IA · Validação e acompanhamento</span>
+    <span class="fail" id="fail" role="status" hidden></span>
+    <span class="clock" id="clock">?</span>
+  </header>
+  <section class="tiles" id="tiles"></section>
+  <div class="main">
+    <div class="quotas" id="quotas"></div>
+    <section class="panel attention"><h2>Atenção</h2><ul class="attn" id="attention"></ul></section>
+    <div class="stack projects" id="projects"></div>
+    <section class="panel filter-panel"><h2>Filtros</h2><div class="filters" id="filters"></div></section>
+    <section class="panel legend-panel"><h2>Legenda</h2>
+        <div class="legend">
+          <span><span class="mark running">●</span> Rodando agora</span>
+          <span><span class="mark review">◐</span> Revisando</span>
+          <span><span class="mark stopped">○</span> Parado</span>
+          <span><span class="mark blocked">■</span> Bloqueado por outro ticket</span>
+          <span><span class="mark done">✓</span> Concluído</span>
+          <span><span class="mark needs">!</span> Precisa de você</span>
+          <span><span class="mark unknown">?</span> Desconhecido</span>
+          <span>Cota: limite da conta de IA</span>
+          <span>Contexto: memória usada pelo agente</span>
+          <span>Conclusão: etapa do ticket no board</span>
+        </div>
+      </section>
+  </div>
+</div>
+
+<script>
+const REFRESH_MS = 5000;
+const STALLED_MS = 25000;
+const STEPS = ['reconhecimento', 'implementando', 'revisando', 'PR aberto', 'CI', 'verificado', 'mergeado'];
+const MARK = { running: '●', review: '◐', stopped: '○', blocked: '■', done: '✓', needs: '!', '?': '?' };
+const FILTERS = [
+  ['all', 'Todos', () => true],
+  ['open', 'Pendentes', a => a.status === 'needs' || a.status === 'review'],
+  ['running', 'Rodando', a => a.status === 'running'],
+  ['stopped', 'Parados', a => a.status === 'stopped' || a.status === 'blocked'],
+  ['done', 'Concluídos', a => a.status === 'done']
+];
+let active = 'all';
+let data = null;
+let all = [];
+
+const esc = v => String(v).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+const isNumber = v => typeof v === 'number';
+const stateClass = s => s === '?' ? 'unknown' : esc(s);
+const count = s => all.filter(a => s.includes(a.status)).length;
+const heat = p => p >= 80 ? 'var(--crit)' : p >= 50 ? 'var(--warn)' : 'var(--ok)';
+const percent = v => isNumber(v) ? `${v}%` : esc(v);
+const bar = (p, colour) => `<span class="bar">${isNumber(p) ? `<i style="width:${Math.min(p, 100)}%;background:${colour}"></i>` : ''}</span>`;
+const clock = at => new Date(at * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const weekday = at => new Date(at * 1000).toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+
+function left(at) {
+  const s = at - data.generated_at;
+  if (s < 3600) return `em ${Math.ceil(s / 60)}m`;
+  if (s < 86400) return `em ${Math.floor(s / 3600)}h`;
+  return `em ${Math.floor(s / 86400)}d`;
+}
+
+function reset(at, far) {
+  if (!isNumber(at)) return '?';
+  if (at <= data.generated_at) return 'renovou';
+  return `${far ? weekday(at) + ' ' : ''}${clock(at)} · ${left(at)}`;
+}
+
+function tiles() {
+  const live = w => isNumber(w.used) && (!isNumber(w.resets_at) || w.resets_at > data.generated_at);
+  const windows = data.limits.flatMap(q => [{ ...q.five_hour, far: false, q }, { ...q.seven_day, far: true, q }]);
+  const top = windows.filter(live).sort((a, b) => b.used - a.used)[0];
+  const week = data.limits.filter(q => isNumber(q.seven_day.resets_at) && q.seven_day.resets_at > data.generated_at).sort((a, b) => a.seven_day.resets_at - b.seven_day.resets_at)[0];
+  const ring = 2 * Math.PI * 15;
+  const slices = data.projects.flatMap(p => p.slices).map(s => `<div class="tile"><span class="label">Fatias do ticket ${esc(s.parent)}</span>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--track)" stroke-width="5"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--ok)" stroke-width="5" stroke-dasharray="${ring * s.merged / s.total} ${ring}" transform="rotate(-90 18 18)"/></svg><b>${s.merged} de ${s.total}</b></div></div>`).join('');
+  const agents = all.filter(a => a.name !== '?');
+  const unknown = count(['?']);
+  document.getElementById('tiles').innerHTML = `
+    <div class="tile"><span class="label">Agentes</span><b>${agents.length}</b><small>${count(['needs'])} precisa de você · ${count(['running'])} rodando · ${count(['review'])} revisão · ${count(['stopped', 'blocked'])} parados · ${count(['done'])} concluídos${unknown ? ` · ${unknown} desconhecidos` : ''}</small></div>
+    <div class="tile alert"><span class="label">Pendências</span><b class="needs">${esc(data.pending.total)}</b><small>${esc(data.pending.agents)} com pergunta aberta · ${esc(data.pending.for_you)} em for you</small></div>
+    ${slices}
+    <div class="tile"><span class="label">Mais perto do limite</span>${top ? `<b style="color:${heat(top.used)}">${top.used}%</b><small>${esc(top.q.account)} · ${top.far ? '7 dias' : '5 horas'} · renova ${reset(top.resets_at, top.far)} · lido há ${esc(top.q.age)}</small>` : '<b>?</b>'}</div>
+    <div class="tile"><span class="label">Próximo reset de 7 dias</span>${week ? `<b>${reset(week.seven_day.resets_at, true).split(' · ')[0]}</b><small>${esc(week.account)} · ${left(week.seven_day.resets_at)}</small>` : '<b>?</b>'}</div>`;
+}
+
+function quotas() {
+  const panel = (title, key, far) => `<section class="panel"><h2>${title} <span>por IA</span></h2>${data.limits.map(q => `
+    <div class="quota"><span>${esc(q.account)}</span>${bar(q[key].used, heat(q[key].used))}<span class="pct">${percent(q[key].used)}</span><span class="when">${reset(q[key].resets_at, far)}<br>lido há ${esc(q.age)}</span></div>`).join('')}</section>`;
+  document.getElementById('quotas').innerHTML = panel('Cota de 5 horas', 'five_hour', false) + panel('Cota de 7 dias', 'seven_day', true);
+}
+
+function conclusion(a) {
+  if (!isNumber(a.step)) return `<span class="steps-text">${esc(a.step)}</span>`;
+  const cells = STEPS.map((_, i) => `<i class="${i < a.step ? 'on' : ''}"></i>`).join('');
+  return `<span class="steps" role="img" aria-label="Etapa ${a.step} de 7">${cells}</span><span class="steps-text">${a.step ? STEPS[a.step - 1] : 'não começou'}</span>`;
+}
+
+const ticketOrRole = a => esc(a.ticket === '—' || a.ticket === '?' ? a.role : a.ticket);
+
+function projects() {
+  const test = FILTERS.find(f => f[0] === active)[2];
+  const blocks = data.projects.map(p => {
+    const rows = p.agents.filter(test).sort((a, b) => (b.status === 'needs') - (a.status === 'needs'));
+    if (!rows.length) return '';
+    return `<section class="panel"><div class="project-head"><h2>${esc(p.name)}</h2><span class="note">${p.agents.length} agentes${p.for_you === 0 ? '' : ` · <span class="needs">${esc(p.for_you)} em for you</span>`}</span></div>
+      <table><thead><tr><th class="c-mark"></th><th class="c-name">Agente</th><th class="c-model">Modelo</th><th class="c-task">Tarefa</th><th class="c-pts">Pts</th><th>Status</th><th class="c-time">Tempo</th><th class="c-ctx">Contexto</th><th class="c-done">Conclusão</th></tr></thead><tbody>
+      ${rows.map(a => `<tr class="${a.status === 'needs' ? 'hot' : ''}"><td class="c-mark"><span class="mark ${stateClass(a.status)}">${esc(MARK[a.status] ?? '?')}</span></td><td class="c-name">${esc(a.name)}</td><td class="c-model">${esc(a.model)}</td><td class="c-task">${ticketOrRole(a)}</td><td class="c-pts">${esc(a.points)}</td><td class="c-status">${esc(a.status_text)}</td><td class="c-time">${esc(a.since)}</td>
+      <td class="c-ctx"><span class="ctx">${bar(a.context, 'var(--ctx)')}<span>${percent(a.context)}</span></span></td><td class="c-done">${conclusion(a)}</td></tr>`).join('')}
+      </tbody></table></section>`;
+  }).join('');
+  document.getElementById('projects').innerHTML = blocks || '<section class="panel empty">Nenhum agente neste filtro.</section>';
+}
+
+function attention() {
+  const order = ['needs', 'review', 'blocked'];
+  const items = all.filter(a => order.includes(a.status)).sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status));
+  document.getElementById('attention').innerHTML = items.map(a => `<li><span class="mark ${stateClass(a.status)}">${MARK[a.status]}</span><span>${esc(a.name)} ${ticketOrRole(a)}</span><small>${esc(a.status_text)}</small></li>`).join('');
+}
+
+function filters() {
+  const focused = document.activeElement.id;
+  const box = document.getElementById('filters');
+  box.innerHTML = FILTERS.map(([id, label, test]) => `<button id="filter-${id}" type="button" data-id="${id}" aria-pressed="${id === active}">${label} (${all.filter(test).length})</button>`).join('');
+  box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { active = b.dataset.id; filters(); projects(); }));
+  document.getElementById(focused)?.focus();
+}
+
+function render() {
+  all = data.projects.flatMap(p => p.agents);
+  document.getElementById('clock').textContent = clock(data.generated_at);
+  tiles(); quotas(); projects(); attention(); filters();
+}
+
+function failed() {
+  const fail = document.getElementById('fail');
+  fail.textContent = `Atualização falhou às ${clock(Date.now() / 1000)}${data ? ` · dados de ${clock(data.generated_at)}` : ''}`;
+  fail.hidden = false;
+}
+
+async function refresh() {
+  try {
+    const answer = await fetch('snapshot', { signal: AbortSignal.timeout(STALLED_MS) });
+    if (!answer.ok) throw new Error(answer.status);
+    data = await answer.json();
+    render();
+    document.getElementById('fail').hidden = true;
+  } catch {
+    failed();
+  }
+  setTimeout(refresh, REFRESH_MS);
+}
+
+refresh();
+</script>

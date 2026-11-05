@@ -56,34 +56,53 @@ renewal() {
   pad "$text" 7
 }
 
+JOINED='map(tostring | gsub("[\n\u001f]"; " ")) | join("\u001f")'
+
+fields() {
+  local f out=()
+  for f; do out+=("${f//[$'\037\n']/$'\t'}"); done
+  (IFS=$'\037'; printf '%s\n' "${out[*]}")
+}
+
+model_name() {
+  local name=${1//[\"\']/}
+  [[ "$name" =~ ^[A-Za-z0-9._:/@-]+(\[[0-9A-Za-z]+\])?$ ]] && echo "$name"
+}
+
+epoch() {
+  if [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]; then date -d "$1" +%s 2>/dev/null || echo -; else echo -; fi
+}
+
 limit_rows() {
-  local now f name a h d r
+  local now f name a h d r w
   now=$(date +%s)
   shopt -s dotglob nullglob
   local files=("$state"/*.json)
-  [ "${#files[@]}" -gt 0 ] || printf 'claude\t-\t-\t-\t-\n'
+  [ "${#files[@]}" -gt 0 ] || fields claude - - - - - - -
   for f in "${files[@]}"; do
     name=$(basename "$f" .json); name=${name#.}
     if jq -e . "$f" >/dev/null 2>&1; then
-      IFS=$'\t' read -r a h d r <<<"$(jq -r '[.updated_at // "-", .five_hour.used_percentage // "-", .seven_day.used_percentage // "-", .five_hour.resets_at // "-"] | @tsv' "$f")"
-      printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$h" "$d" "$a" "$r"
+      IFS=$'\037' read -r a h d r w <<<"$(jq -r '[.updated_at // "-", .five_hour.used_percentage // "-", .seven_day.used_percentage // "-", .five_hour.resets_at // "-", .seven_day.resets_at // "-"] | '"$JOINED" "$f")"
+      fields "$name" "$h" "$d" "$a" "$r" "$a" "$r" "$w"
     else
-      printf '%s\t-\t-\t-\t-\n' "$name"
+      fields "$name" - - - - - - -
     fi
   done
-  local line at ts
-  line=$(jq -r '.providers[]? | select(.id == "codex")
+  local line at ts shown
+  line=$(jq -r 'def window($ring): first(.meters[0].windows[]? | select(.ring == $ring)) // {};
+    .providers[]? | select(.id == "codex")
     | [.lastSuccessAt // "-",
-       ((.meters[0].windows[]? | select(.ring == "session") | .usedPercent) // "-"),
-       ((.meters[0].windows[]? | select(.ring == "weekly") | .usedPercent) // "-"),
-       ((.meters[0].windows[]? | select(.ring == "session") | .resetsAt) // "-")] | @tsv' "$data/usage/providers/.status.json" 2>/dev/null)
+       (window("session").usedPercent // "-"),
+       (window("weekly").usedPercent // "-"),
+       (window("session").resetsAt // "-"),
+       (window("weekly").resetsAt // "-")] | '"$JOINED" "$data/usage/providers/.status.json" 2>/dev/null)
   if [ -n "$line" ]; then
-    IFS=$'\t' read -r at h d r <<<"$line"
+    IFS=$'\037' read -r at h d r w <<<"$line"
     ts=$(date -d "$at" +%s 2>/dev/null) || ts=-
-    r=$(date -d "$r" +%s 2>/dev/null) || r=-
-    printf 'codex\t%s\t%s\t%s\t%s\n' "$h" "$d" "$ts" "$r"
+    shown=$(date -d "$r" +%s 2>/dev/null) || shown=-
+    fields codex "$h" "$d" "$ts" "$shown" "$(epoch "$at")" "$(epoch "$r")" "$(epoch "$w")"
   else
-    printf 'codex\t-\t-\t-\t-\n'
+    fields codex - - - - - - -
   fi
 }
 
@@ -91,13 +110,13 @@ header() {
   local now rows w=0 width=16 name h d a r seen
   now=$(date +%s)
   [ "$cols" -lt 90 ] && width=8
-  mapfile -t rows < <(limit_rows)
+  mapfile -t rows < <(limit_rows | cut -d$'\037' -f1-5)
   for seen in "${rows[@]}"; do
-    name=${seen%%$'\t'*}
+    name=${seen%%$'\037'*}
     [ "${#name}" -gt "$w" ] && w=${#name}
   done
   for seen in "${rows[@]}"; do
-    IFS=$'\t' read -r name h d a r <<<"$seen"
+    IFS=$'\037' read -r name h d a r <<<"$seen"
     seen='?'
     [[ "$a" =~ ^[0-9]+$ ]] && seen=$(age $((now - a)))
     printf '  %s %s5h%s %s  %s%s  %s%s   %s7d%s %s\n' "$(pad "$name" "$w")" "$DIM" "$OFF" "$(meter "$h" "$width")" \
@@ -144,12 +163,57 @@ translate() {
       -e 's/^held behind/aguardando/' -e 's/^PR open/PR aberto/' -e 's/^recon/reconhecimento/' <<<"$1"
 }
 
+board_step() {
+  case "$1" in
+    '?') echo '?' ;;
+    -) echo - ;;
+    'held behind'*) echo 0 ;;
+    recon*|grilling*) echo 1 ;;
+    implementing*) echo 2 ;;
+    reviewing*) echo 3 ;;
+    'PR open'*) echo 4 ;;
+    CI*) echo 5 ;;
+    verified*|'waiting Jonatas'*) echo 6 ;;
+    merged*) echo 7 ;;
+    *) echo '?' ;;
+  esac
+}
+
+agent_status() {
+  local bstate="$1" star="$2" session="$3" live="$4"
+  case "$bstate" in merged*) echo done; return ;; esac
+  if [ "$star" = '!' ]; then echo needs; return; fi
+  case "$bstate" in
+    'waiting Jonatas'*) echo needs; return ;;
+    reviewing*|'PR open'*|CI*|verified*) echo review; return ;;
+    'held behind'*) echo blocked; return ;;
+    -|'?') [ "$session" = idle ] && { echo stopped; return; } ;;
+  esac
+  if [ "$live" = yes ]; then echo running; else echo '?'; fi
+}
+
+parent_slices() {
+  [ -f "$1" ] || { echo -; return; }
+  awk -F' · ' '
+    { for (i = 1; i <= 2; i++) if ($i ~ /^[^ \/]*(#[0-9]+|[A-Z]+-[0-9]+)\/[^ \/]+$/) {
+        p = $i; sub(/\/.*/, "", p)
+        if (!(p in total)) order[++n] = p
+        total[p]++
+        if ($(i + 1) ~ /^merged/) merged[p]++
+        break
+      } }
+    END {
+      if (!n) printf "-"
+      for (i = 1; i <= n; i++) printf "%s%s=%d/%d", (i > 1 ? "," : ""), order[i], merged[order[i]], total[order[i]]
+    }' "$1"
+}
+
 agent_row() {
   local project="$1" ws="$2" name="$3" type="$4" cmd="$5" role="$6" cwd="$7" found="$8" roles="$9"
-  local now model rolename ticket tstate points foryou since ctx star
+  local now model rolename ticket tstate points foryou since ctx star bstate board_ticket step slices session=- live=no context='?'
   now=$(date +%s)
-  model=$(sed -n 's/.*--model[ =]\([^ ]*\).*/\1/p' <<<"$cmd")
-  rolename=$(jq -r --arg r "$(tr 'A-Z' 'a-z' <<<"$role")" '.payload.rolePresets[]? | select((.id | ascii_downcase) == $r) | .name' "$roles" 2>/dev/null)
+  model=$(model_name "$(sed -n 's/.*--model[ =]\([^ ]*\).*/\1/p' <<<"$cmd")")
+  rolename=$(jq -r --arg r "$(tr 'A-Z' 'a-z' <<<"$role")" '.payload.rolePresets[]? | select((.id | ascii_downcase) == $r) | .name' "$roles" 2>/dev/null | head -1)
   [ -n "$rolename" ] || rolename='?'
 
   ticket='?'; tstate='?'; points='?'
@@ -161,9 +225,14 @@ agent_row() {
     if [ -n "$l" ]; then
       IFS='|' read -r ticket tstate points <<<"$(awk -F' · ' '{ printf "%s|%s|%s", $2, $3, ($5 == "" ? "?" : $5) }' <<<"$l")"
       ticket=${ticket##*/}
+      bstate=$tstate
       tstate=$(translate "$tstate")
     fi
   fi
+  bstate=${bstate:-$tstate}
+  board_ticket=$ticket
+  step=$(board_step "$bstate")
+  slices=$(parent_slices "$board")
 
   foryou='?'
   [ -f "$ws/notes/for you.md" ] && foryou=$(grep -c -- '^- \[ \]' "$ws/notes/for you.md")
@@ -172,8 +241,10 @@ agent_row() {
   if [ -n "$found" ]; then
     local dir sf sid tr tokens size account at status last
     dir=${found%%|*}; sf=${found#*|}
-    IFS=$'\t' read -r at status sid <<<"$(jq -r '[.statusUpdatedAt // "-", .status // "-", .sessionId // "-"] | @tsv' "$sf" 2>/dev/null)"
+    live=yes
+    IFS=$'\037' read -r at status sid <<<"$(jq -r '[.statusUpdatedAt // "-", .status // "-", .sessionId // "-"] | '"$JOINED" "$sf" 2>/dev/null)"
     [[ "$at" =~ ^[0-9]+$ ]] && since=$(age $((now - at / 1000)))
+    session=$status
     case "$tstate/$status" in
       [-?]/busy) tstate='trabalhando' ;;
       [-?]/idle) tstate='parado' ;;
@@ -186,16 +257,19 @@ agent_row() {
       account=$(basename "$dir")
       size=$(jq -r --arg m "$last" '.context_window_sizes[$m] // empty' "$state/$account.json" 2>/dev/null)
       [ -n "$tokens" ] && [ -n "$size" ] && ctx=$(awk -v t="$tokens" -v s="$size" 'BEGIN { printf "%.0f", t * 100 / s }')
+      [ "$tokens" -gt 0 ] 2>/dev/null && [ "$size" -gt 0 ] 2>/dev/null && context=$ctx
       [ "$(pending_question "$tr")" = yes ] && star='!'
-      [ -n "$model" ] || model=$(sed -e 's/^claude-//' -e 's/-[0-9].*//' <<<"$last")
+      [ -n "$model" ] || model=$(model_name "$(sed -e 's/^claude-//' -e 's/-[0-9].*//' <<<"$last")")
     fi
   fi
   [ -n "$model" ] || model='?'
+  [ "$type" = claude_code ] || live=yes
   if [ "$ticket" = - ] || [ "$ticket" = '?' ]; then
     case "$rolename" in Executor|'?') ;; *) ticket="$rolename" ;; esac
   fi
 
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$project" "$name" "$model" "$ticket" "$tstate" "$points" "$since" "$ctx" "$star" "$foryou"
+  fields "$project" "$name" "$model" "$ticket" "$tstate" "$points" "$since" "$ctx" "$star" "$foryou" \
+    "$rolename" "$board_ticket" "$step" "$(agent_status "$bstate" "$star" "$session" "$live")" "$slices" "$context"
 }
 
 any_session() {
@@ -221,7 +295,7 @@ rows() {
         | [($p.name | dash), .name, .agentType, (.command | dash), (.assignedRoleId | dash),
            ((.workingDirectory | dash) as $d | if $d == "-" then ($p.workingDirectory | dash) else $d end),
            (.status | dash)] | @tsv' "$w/workspace.json" 2>/dev/null); then
-      printf '?\t?\t?\t?\t?\t?\t?\t?\t-\t?\n'
+      fields '?' '?' '?' '?' '?' '?' '?' '?' - '?' '?' '?' '?' '?' - '?'
       continue
     fi
     local project name type cmd role wd status cwd found
@@ -255,7 +329,7 @@ render() {
   local all=() line project name model ticket tstate points since ctx star foryou
   local -A hot=() open=() seen=()
   local wn=5 wm=5 wt=6 ws=6 wp=0 pending=0 agents=0
-  mapfile -t all < <(rows)
+  mapfile -t all < <(rows | tr '\037' '\t' | cut -f1-10)
   for line in "${all[@]}"; do
     IFS=$'\t' read -r project name model ticket tstate points since ctx star foryou <<<"$line"
     [ "$name" = '?' ] || agents=$((agents + 1))
@@ -321,6 +395,40 @@ render() {
   printf '  %s● ativo  ◐ revisão  ○ parado  ✓ terminou  ! precisa de você%s\n' "$DIM" "$OFF"
 }
 
+limit_snapshot() {
+  local now name h d r w a seen
+  now=$(date +%s)
+  limit_rows | while IFS=$'\037' read -r name h d _ _ a r w; do
+    seen='?'
+    [[ "$a" =~ ^[0-9]+$ ]] && seen=$(age $((now - a)))
+    fields "$name" "$(num "$h")" "$r" "$(num "$d")" "$w" "$a" "$seen"
+  done
+}
+
+snapshot() {
+  jq -n --argjson now "$(date +%s)" --rawfile limits <(limit_snapshot) --rawfile agents <(rows) '
+    def lines: split("\n") | map(select(. != "") | split("\u001f"));
+    def known: if . == null or . == "" or test("\t") then "?" elif . == "-" then "—" elif test("^[0-9]+$") then tonumber else . end;
+    def stamp: if test("^[1-9][0-9]*$") then tonumber else "?" end;
+    def slices: if . == null or . == "-" then [] else split(",") | map(capture("^(?<parent>.*)=(?<merged>[0-9]+)/(?<total>[0-9]+)$")
+      | {parent, merged: (.merged | tonumber), total: (.total | tonumber)}) end;
+    ($agents | lines | map({project: .[0], for_you: (.[9] | known), slices: (.[14] | slices), question: (.[8] == "!"),
+      agent: {name: .[1], model: .[2], role: (.[10] | known), ticket: (.[11] | known), points: (.[5] | known),
+        status: (.[13] | known), status_text: (.[4] | known), since: .[6], context: (.[15] | known), step: (.[12] | known)}})) as $rows
+    | ($rows | group_by(.project) | map({name: .[0].project, for_you: .[0].for_you, slices: .[0].slices, agents: map(.agent)})) as $projects
+    | ($rows | map(select(.question and .agent.status != "done")) | length) as $asking
+    | ($projects | map(.for_you)) as $open
+    | {generated_at: $now,
+       limits: ($limits | lines | map({account: .[0],
+         five_hour: {used: (.[1] | known), resets_at: (.[2] | stamp)},
+         seven_day: {used: (.[3] | known), resets_at: (.[4] | stamp)},
+         updated_at: (.[5] | stamp), age: .[6]})),
+       pending: {agents: $asking,
+         for_you: (if any($open[]; . == "?") then "?" else ($open | add // 0) end),
+         total: (if any($open[]; . == "?") then "?" else $asking + ($open | add // 0) end)},
+       projects: $projects}'
+}
+
 terminal_width() {
   local w
   w=${COLUMNS:-$({ stty size </dev/tty; } 2>/dev/null | cut -d' ' -f2)}
@@ -332,6 +440,16 @@ cols=$(terminal_width)
 if [ "${1:-}" = "--once" ]; then
   render
   exit 0
+fi
+
+if [ "${1:-}" = "--json" ]; then
+  snapshot
+  exit
+fi
+
+if [ "${1:-}" = "--serve" ]; then
+  command -v python3 >/dev/null || { echo "cockpit: --serve needs python3" >&2; exit 1; }
+  exec python3 "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/cockpit-serve" "${2:-4317}"
 fi
 
 while true; do
