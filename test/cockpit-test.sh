@@ -334,7 +334,7 @@ CLAUDE_HOME="$H" bash "$ROOT/bin/cockpit-install" >/dev/null 2>&1
 CLAUDE_HOME="$H" bash "$ROOT/bin/cockpit-install" >/dev/null 2>&1
 check "16 run twice: one statusLine, other settings kept" "$(jq -c '[.model, (.statusLine|type), (keys|length)]' "$H/settings.json")" '["opus","object",2]'
 
-snap() { timeout 20 bash "$ROOT/bin/cockpit" --json 2>&1; }
+snap() { timeout 20 bash "$ROOT/bin/cockpit" --json 2>/dev/null; }
 agent() { jq -c --arg n "$2" '.projects[].agents[] | select(.name == $n)' <<<"$1"; }
 val() { jq -r "$2" <<<"$1"; }
 one_agent() { workspace w1 "ProjA" "$(terminal "$1" claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-a-1")"; }
@@ -383,9 +383,26 @@ echo '{"providers":[{"id":"codex","meters":[{"windows":[{"ring":"session","usedP
 out=$(snap)
 check "S2 a malformed workspace or a missing file gives ? in that field and exit 0: codex with no dates" \
   "$(val "$out" '.limits[] | select(.account == "codex") | [.five_hour.used,.five_hour.resets_at,.seven_day.used,.seven_day.resets_at,.updated_at,.age] | join(" ")')" '7 ? 23 ? ? ?'
+echo '{"providers":[{"id":"codex","meters":[{"windows":[{"ring":"session","usedPercent":7,"resetsAt":"2030-01-01T00:00:00Z"},{"ring":"weekly","usedPercent":23,"resetsAt":"2030-01-02T00:00:00Z"},{"ring":"weekly","usedPercent":9}]}]}]}' > "$T/maestri/usage/providers/.status.json"
+check "S2 a malformed workspace or a missing file gives ? in that field and exit 0: codex with two weekly windows invents no date" \
+  "$(val "$(snap)" '.limits[] | select(.account == "codex") | [.five_hour.used,.five_hour.resets_at,.seven_day.used,.seven_day.resets_at] | join(" ")')" "7 $(date -d 2030-01-01T00:00:00Z +%s) 23 $(date -d 2030-01-02T00:00:00Z +%s)"
 rm -rf "$T/maestri"
 out=$(snap); code=$?
 check "S2 a malformed workspace or a missing file gives ? in that field and exit 0: no Maestri dir" "$code/$(val "$out" '.projects | length')" "0/0"
+
+reset
+jq '.payload.rolePresets += [{"id":"cccc-rev","name":"Code Reviewer"},{"id":"CCCC-REV","name":"Revisor"}]' "$T/maestri/preferences.json" > "$T/p.json" && mv "$T/p.json" "$T/maestri/preferences.json"
+workspace w1 "ProjA" "$(terminal Ana claude_code running 'claude --model sonnet' CCCC-REV "$T/code/proj-a-1")"
+note w1 board "Ana · #1"
+note w1 "for you" "- [ ] one"
+out=$(snap); code=$?
+check "S2 a malformed workspace or a missing file gives ? in that field and exit 0: a board line with an empty state" "$code $(val "$out" '.projects | length') $(val "$(agent "$out" Ana)" '[.role,.status_text] | join(" ")')" "0 1 Code Reviewer ?"
+chmod 000 "$T/maestri/workspaces/w1/notes/for you.md"
+out=$(snap); code=$?
+check "S2 a malformed workspace or a missing file gives ? in that field and exit 0: an unreadable for you" "$code $(val "$out" '.projects[0].for_you')" "0 ?"
+chmod 644 "$T/maestri/workspaces/w1/notes/for you.md"
+out=$(timeout 20 bash "$ROOT/bin/cockpit" --once 2>&1); code=$?
+check "S12 a board line with an empty field still ends and exits 0" "$code" 0
 
 reset
 one_agent Aracati
@@ -395,6 +412,15 @@ transcript "$T/claude-a" "$CWD" s1 <<EOF
 EOF
 state_file claude-a "$NOW" 200000
 check "S3 a context the cockpit cannot compute is unknown in the snapshot, not 0" "$(val "$(agent "$(snap)" Aracati)" '.context')" '?'
+transcript "$T/claude-a" "$CWD" s1 <<EOF
+{"type":"assistant","message":{"model":"m1","usage":{},"content":[{"type":"text","text":"ok"}]}}
+EOF
+check "S3 a context the cockpit cannot compute is unknown in the snapshot, not 0: empty usage" "$(val "$(agent "$(snap)" Aracati)" '.context')" '?'
+transcript "$T/claude-a" "$CWD" s1 <<EOF
+$(usage_line 2 1000 99000)
+EOF
+state_file claude-a "$NOW" 0
+check "S3 a context the cockpit cannot compute is unknown in the snapshot, not 0: zero window" "$(val "$(agent "$(snap)" Aracati)" '.context')" '?'
 
 for line in 'recon|1|running' 'grilling|1|running' 'implementing|2|running' 'reviewing|3|review' 'PR open|4|review' 'CI|5|review' \
   'verified|6|review' 'waiting Jonatas|6|needs' 'merged PR #187|7|done' 'held behind #173|0|blocked'; do
@@ -445,6 +471,9 @@ note w1 board "# board" "testes · https://x/y" "status 04/11: #171/#172 merged"
 check "S6 five parent lines with two merged give 2 of 5" "$(val "$(snap)" '.projects[0].slices | tojson')" '[{"parent":"#171","merged":2,"total":5}]'
 reset
 one_agent Aracati
+note w1 board "# board" "Aracati · #184 · reviewing · opus" "Tamarindo · #153 · merged PR #186 · sonnet"
+note w1 board "Aracati · ENG-894/ENG-900 · merged PR #9 · opus" "ENG-894/ENG-901 · held behind ENG-900"
+check "S6 a Linear parent counts its slices" "$(val "$(snap)" '.projects[0].slices | tojson')" '[{"parent":"ENG-894","merged":1,"total":2}]'
 note w1 board "# board" "Aracati · #184 · reviewing · opus" "Tamarindo · #153 · merged PR #186 · sonnet"
 check "S6 a board with no parent gives no slices" "$(val "$(snap)" '.projects[0].slices | tojson')" '[]'
 
@@ -501,6 +530,7 @@ $(usage_line 2 1000 99000)
 EOF
 state_file claude-a "$NOW" 200000
 jq --argjson f "$(( NOW + 600 ))" --argjson s "$(( NOW + 90000 ))" '.five_hour.resets_at = $f | .seven_day.resets_at = $s' "$STATE/claude-a.json" > "$T/s.json" && mv "$T/s.json" "$STATE/claude-a.json"
+before=$(sum)
 serve_start
 check "S9 serve binds to 127.0.0.1 and returns the page and the snapshot: bound to loopback only" "$(ss -ltnH "sport = :$PORT" | awk '{print $4}')" "127.0.0.1:$PORT"
 has "S9 serve binds to 127.0.0.1 and returns the page and the snapshot: the page" "$(curl -s "http://127.0.0.1:$PORT/")" '<title>Cockpit'
@@ -508,7 +538,6 @@ check "S9 serve binds to 127.0.0.1 and returns the page and the snapshot: the sn
 check "S9 serve binds to 127.0.0.1 and returns the page and the snapshot: an unknown path is 404" "$(URLPATH=/nada code_of)" 404
 hasnt "S9 the server sends no CORS header" "$(curl -s -D - -o /dev/null -H 'Origin: http://evil.example' "http://127.0.0.1:$PORT/snapshot" | tr 'A-Z' 'a-z')" 'access-control'
 
-before=$(sum)
 check "S10 POST returns an error" "$(refused -X POST -d x)" yes
 check "S10 PUT returns an error" "$(refused -X PUT -d x)" yes
 check "S10 DELETE returns an error" "$(refused -X DELETE)" yes
@@ -547,9 +576,9 @@ has "S9 the page shows the age of the limits" "$dom" 'lido há'
 serve_stop
 
 reset
-one_agent '<img src=x onerror=alert(1)>'
+one_agent '<img src=x>'
 state_file claude-a "$NOW" 200000
-jq '.five_hour.used_percentage = 94 | .five_hour.resets_at = 1' "$STATE/claude-a.json" > "$T/s.json" && mv "$T/s.json" "$STATE/claude-a.json"
+jq '.five_hour.used_percentage = 94 | .five_hour.resets_at = 1 | .seven_day.used_percentage = 10' "$STATE/claude-a.json" > "$T/s.json" && mv "$T/s.json" "$STATE/claude-a.json"
 echo '{"five_hour":{"used_percentage":30,"resets_at":'"$((NOW + 600))"'},"updated_at":'"$NOW"'}' > "$STATE/claude-b.json"
 serve_start
 dom=$(page); text=$(visible "$dom")
@@ -560,16 +589,25 @@ has "S14 an unknown value on the page renders as ? or —, never 0: context" "$(
 has "S14 an unknown value on the page renders as ? or —, never 0: Conclusão" "$(cell "$dom" c-done)" '?'
 has "S14 an unknown value on the page renders as ? or —, never 0: pendências" "$text" 'Pendências ? '
 has "S14 an expired window is not the quota nearest its limit" "$text" 'Mais perto do limite 30%'
+has "S14 the quota nearest its limit names its window" "$text" 'claude-b · 5 horas'
 hasnt "S6 the page hides the slices with no parent" "$dom" 'Fatias do ticket'
 hasnt "S14 snapshot values are not trusted markup" "$dom" '<img'
 has "S14 snapshot values are shown as text" "$dom" '&lt;img'
+serve_stop
+
+reset
+one_agent Aracati
+state_file claude-a "$NOW" 200000
+jq --argjson f "$(( NOW + 600 ))" --argjson s "$(( NOW + 90000 ))" '.five_hour.used_percentage = 10 | .five_hour.resets_at = $f | .seven_day.used_percentage = 95 | .seven_day.resets_at = $s' "$STATE/claude-a.json" > "$T/s.json" && mv "$T/s.json" "$STATE/claude-a.json"
+serve_start
+has "S14 the quota nearest its limit may be the 7-day one" "$(visible "$(page)")" 'Mais perto do limite 95% claude-a · 7 dias'
 serve_stop
 
 mkdir -p "$T/nojq"
 for tool in bash python3 dirname readlink date; do ln -s "$(command -v "$tool")" "$T/nojq/$tool"; done
 SERVE_PATH="$T/nojq" serve_start
 check "S9 a snapshot that fails returns an error status" "$(code_of)" 500
-has "S14 the page says the refresh failed" "$(page)" 'Atualização falhou'
+has "S14 the page says the refresh failed" "$(page)" 'role="status">Atualização falhou'
 serve_stop
 
 check "S12 the --once output for the existing fixtures is unchanged" "$(cat "$T/once-changed")" ""

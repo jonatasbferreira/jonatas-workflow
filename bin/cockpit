@@ -76,12 +76,13 @@ limit_rows() {
     fi
   done
   local line at ts shown
-  line=$(jq -r '.providers[]? | select(.id == "codex")
+  line=$(jq -r 'def window($ring): first(.meters[0].windows[]? | select(.ring == $ring)) // {};
+    .providers[]? | select(.id == "codex")
     | [.lastSuccessAt // "-",
-       ((.meters[0].windows[]? | select(.ring == "session") | .usedPercent) // "-"),
-       ((.meters[0].windows[]? | select(.ring == "weekly") | .usedPercent) // "-"),
-       ((.meters[0].windows[]? | select(.ring == "session") | .resetsAt) // "-"),
-       ((.meters[0].windows[]? | select(.ring == "weekly") | .resetsAt) // "-")] | @tsv' "$data/usage/providers/.status.json" 2>/dev/null)
+       (window("session").usedPercent // "-"),
+       (window("weekly").usedPercent // "-"),
+       (window("session").resetsAt // "-"),
+       (window("weekly").resetsAt // "-")] | @tsv' "$data/usage/providers/.status.json" 2>/dev/null)
   if [ -n "$line" ]; then
     IFS=$'\t' read -r at h d r w <<<"$line"
     ts=$(date -d "$at" +%s 2>/dev/null) || ts=-
@@ -96,13 +97,13 @@ header() {
   local now rows w=0 width=16 name h d a r seen
   now=$(date +%s)
   [ "$cols" -lt 90 ] && width=8
-  mapfile -t rows < <(limit_rows)
+  mapfile -t rows < <(limit_rows | cut -f1-5)
   for seen in "${rows[@]}"; do
     name=${seen%%$'\t'*}
     [ "${#name}" -gt "$w" ] && w=${#name}
   done
   for seen in "${rows[@]}"; do
-    IFS=$'\t' read -r name h d a r _ <<<"$seen"
+    IFS=$'\t' read -r name h d a r <<<"$seen"
     seen='?'
     [[ "$a" =~ ^[0-9]+$ ]] && seen=$(age $((now - a)))
     printf '  %s %s5h%s %s  %s%s  %s%s   %s7d%s %s\n' "$(pad "$name" "$w")" "$DIM" "$OFF" "$(meter "$h" "$width")" \
@@ -181,7 +182,7 @@ agent_status() {
 parent_slices() {
   [ -f "$1" ] || { echo -; return; }
   awk -F' · ' '
-    { for (i = 1; i <= 2; i++) if ($i ~ /^[^ \/]*#[0-9]+\/[^ \/]+$/) {
+    { for (i = 1; i <= 2; i++) if ($i ~ /^[^ \/]*(#[0-9]+|[A-Z]+-[0-9]+)\/[^ \/]+$/) {
         p = $i; sub(/\/.*/, "", p)
         if (!(p in total)) order[++n] = p
         total[p]++
@@ -196,10 +197,10 @@ parent_slices() {
 
 agent_row() {
   local project="$1" ws="$2" name="$3" type="$4" cmd="$5" role="$6" cwd="$7" found="$8" roles="$9"
-  local now model rolename ticket tstate points foryou since ctx star bstate btask step slices session=- live=no
+  local now model rolename ticket tstate points foryou since ctx star bstate board_ticket step slices session=- live=no context='?'
   now=$(date +%s)
   model=$(sed -n 's/.*--model[ =]\([^ ]*\).*/\1/p' <<<"$cmd")
-  rolename=$(jq -r --arg r "$(tr 'A-Z' 'a-z' <<<"$role")" '.payload.rolePresets[]? | select((.id | ascii_downcase) == $r) | .name' "$roles" 2>/dev/null)
+  rolename=$(jq -r --arg r "$(tr 'A-Z' 'a-z' <<<"$role")" '.payload.rolePresets[]? | select((.id | ascii_downcase) == $r) | .name' "$roles" 2>/dev/null | head -1)
   [ -n "$rolename" ] || rolename='?'
 
   ticket='?'; tstate='?'; points='?'
@@ -216,7 +217,7 @@ agent_row() {
     fi
   fi
   bstate=${bstate:-$tstate}
-  btask=$ticket
+  board_ticket=$ticket
   step=$(board_step "$bstate")
   slices=$(parent_slices "$board")
 
@@ -243,6 +244,7 @@ agent_row() {
       account=$(basename "$dir")
       size=$(jq -r --arg m "$last" '.context_window_sizes[$m] // empty' "$state/$account.json" 2>/dev/null)
       [ -n "$tokens" ] && [ -n "$size" ] && ctx=$(awk -v t="$tokens" -v s="$size" 'BEGIN { printf "%.0f", t * 100 / s }')
+      [ "$tokens" -gt 0 ] 2>/dev/null && [ "$size" -gt 0 ] 2>/dev/null && context=$ctx
       [ "$(pending_question "$tr")" = yes ] && star='!'
       [ -n "$model" ] || model=$(sed -e 's/^claude-//' -e 's/-[0-9].*//' <<<"$last")
     fi
@@ -253,8 +255,8 @@ agent_row() {
     case "$rolename" in Executor|'?') ;; *) ticket="$rolename" ;; esac
   fi
 
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$project" "$name" "$model" "$ticket" "$tstate" "$points" "$since" "$ctx" "$star" "$foryou" \
-    "$rolename" "$btask" "$step" "$(agent_status "$bstate" "$star" "$session" "$live")" "$slices"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$project" "$name" "$model" "$ticket" "$tstate" "$points" "$since" "$ctx" "$star" "$foryou" \
+    "$rolename" "$board_ticket" "$step" "$(agent_status "$bstate" "$star" "$session" "$live")" "$slices" "$context"
 }
 
 any_session() {
@@ -280,7 +282,7 @@ rows() {
         | [($p.name | dash), .name, .agentType, (.command | dash), (.assignedRoleId | dash),
            ((.workingDirectory | dash) as $d | if $d == "-" then ($p.workingDirectory | dash) else $d end),
            (.status | dash)] | @tsv' "$w/workspace.json" 2>/dev/null); then
-      printf '?\t?\t?\t?\t?\t?\t?\t?\t-\t?\t?\t?\t?\t?\t-\n'
+      printf '?\t?\t?\t?\t?\t?\t?\t?\t-\t?\t?\t?\t?\t?\t-\t?\n'
       continue
     fi
     local project name type cmd role wd status cwd found
@@ -311,12 +313,12 @@ state_mark() {
 }
 
 render() {
-  local all=() line project name model ticket tstate points since ctx star foryou _
+  local all=() line project name model ticket tstate points since ctx star foryou
   local -A hot=() open=() seen=()
   local wn=5 wm=5 wt=6 ws=6 wp=0 pending=0 agents=0
-  mapfile -t all < <(rows)
+  mapfile -t all < <(rows | cut -f1-10)
   for line in "${all[@]}"; do
-    IFS=$'\t' read -r project name model ticket tstate points since ctx star foryou _ <<<"$line"
+    IFS=$'\t' read -r project name model ticket tstate points since ctx star foryou <<<"$line"
     [ "$name" = '?' ] || agents=$((agents + 1))
     [ "$star" = '!' ] && { hot[$project]=1; pending=$((pending + 1)); }
     if [ -z "${open[$project]:-}" ]; then
@@ -363,7 +365,7 @@ render() {
     printf '  %s%s%s%s %s%s%s%s\n' "$BOLD" "$BLU" "$p" "$OFF" "$GRY" "$(repeat '─' "$rule")" "$OFF" "$heading"
     for want in '!' '-'; do
       for line in "${all[@]}"; do
-        IFS=$'\t' read -r project name model ticket tstate points since ctx star foryou _ <<<"$line"
+        IFS=$'\t' read -r project name model ticket tstate points since ctx star foryou <<<"$line"
         [ "$project" = "$p" ] && [ "$star" = "$want" ] || continue
         [ "${#tstate}" -gt "$ws" ] && tstate="${tstate:0:$((ws - 1))}…"
         mark=$(state_mark "$star" "$tstate")
@@ -393,13 +395,13 @@ limit_snapshot() {
 snapshot() {
   jq -n --argjson now "$(date +%s)" --rawfile limits <(limit_snapshot) --rawfile agents <(rows) '
     def lines: split("\n") | map(select(. != "") | split("\t"));
-    def known: if . == "-" then "—" elif test("^[0-9]+$") then tonumber else . end;
+    def known: if . == null or . == "" then "?" elif . == "-" then "—" elif test("^[0-9]+$") then tonumber else . end;
     def stamp: if test("^[1-9][0-9]*$") then tonumber else "?" end;
-    def slices: if . == "-" then [] else split(",") | map(capture("^(?<parent>.*)=(?<merged>[0-9]+)/(?<total>[0-9]+)$")
+    def slices: if . == null or . == "-" then [] else split(",") | map(capture("^(?<parent>.*)=(?<merged>[0-9]+)/(?<total>[0-9]+)$")
       | {parent, merged: (.merged | tonumber), total: (.total | tonumber)}) end;
     ($agents | lines | map({project: .[0], for_you: (.[9] | known), slices: (.[14] | slices), question: (.[8] == "!"),
-      agent: {name: .[1], model: .[2], role: .[10], ticket: (.[11] | known), points: (.[5] | known),
-        status: .[13], status_text: (.[4] | known), since: .[6], context: (.[7] | known), step: (.[12] | known)}})) as $rows
+      agent: {name: .[1], model: .[2], role: (.[10] | known), ticket: (.[11] | known), points: (.[5] | known),
+        status: (.[13] | known), status_text: (.[4] | known), since: .[6], context: (.[15] | known), step: (.[12] | known)}})) as $rows
     | ($rows | group_by(.project) | map({name: .[0].project, for_you: .[0].for_you, slices: .[0].slices, agents: map(.agent)})) as $projects
     | ($rows | map(select(.question and .agent.status != "done")) | length) as $asking
     | ($projects | map(.for_you)) as $open

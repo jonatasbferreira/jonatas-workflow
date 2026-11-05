@@ -8,6 +8,7 @@ from pathlib import Path
 
 BIN = Path(__file__).resolve().parent
 PAGE = BIN.parent / "templates" / "cockpit.html"
+SNAPSHOT_SECONDS = 20
 HOST = re.compile(r"(localhost|127\.0\.0\.1)(:[0-9]+)?")
 
 
@@ -30,12 +31,10 @@ class Cockpit(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def snapshot(self):
-        run = subprocess.run([BIN / "cockpit", "--json"], capture_output=True)
         try:
-            if run.returncode != 0:
-                raise ValueError
+            run = subprocess.run([BIN / "cockpit", "--json"], capture_output=True, check=True, timeout=SNAPSHOT_SECONDS)
             json.loads(run.stdout)
-        except ValueError:
+        except (subprocess.SubprocessError, ValueError):
             self.send_error(500)
             return
         self.answer("application/json", run.stdout)

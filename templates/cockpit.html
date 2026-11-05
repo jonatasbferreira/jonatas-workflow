@@ -18,7 +18,8 @@ header { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; pa
 .sub { color: var(--dim); min-width: 0; }
 .fail { color: var(--crit); border: 1px solid var(--crit); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
 .clock { margin-left: auto; border: 1px solid var(--line); border-radius: 5px; padding: 2px 10px; }
-.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.tiles { display: flex; flex-wrap: wrap; gap: 12px; }
+.tiles .tile { flex: 1 1 190px; box-sizing: border-box; }
 .tile, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; min-width: 0; }
 .tile { padding: 10px 14px; display: grid; gap: 2px; }
 .tile.alert { border-color: var(--warn); }
@@ -80,8 +81,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .legend { display: flex; flex-wrap: wrap; gap: 3px 16px; }
 }
 @media (max-width: 900px) {
-  .tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .tile { grid-column: span 2; } .tile:nth-child(-n+2) { grid-column: span 3; }
   .quotas { grid-template-columns: minmax(0, 1fr); }
   thead { display: none; }
   table, tbody { display: block; }
@@ -94,8 +93,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   td.c-ctx { display: flex; align-items: center; min-width: 0; } .ctx { flex: 1; min-width: 0; }
 }
 @media (max-width: 560px) {
-  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tile, .tile:nth-child(-n+2) { grid-column: auto; } .tile:first-child { grid-column: 1 / -1; }
+  .tiles .tile { flex-basis: 150px; }
   .quota { grid-template-columns: 1fr 42px; } .quota .bar { grid-column: 1 / -1; grid-row: 2; } .quota .when { grid-column: 1 / -1; text-align: left; }
   tr { grid-template-columns: 20px minmax(0, 1fr) 64px 44px; grid-template-areas: "mark name model time" ". task task pts" ". status status status" ". ctx ctx ctx" ". done done done"; }
 }
@@ -133,6 +131,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 <script>
 const REFRESH_MS = 5000;
+const STALLED_MS = 25000;
 const STEPS = ['reconhecimento', 'implementando', 'revisando', 'PR aberto', 'CI', 'verificado', 'mergeado'];
 const MARK = { running: '●', review: '◐', stopped: '○', blocked: '■', done: '✓', needs: '!', '?': '?' };
 const FILTERS = [
@@ -170,8 +169,9 @@ function reset(at, far) {
 }
 
 function tiles() {
-  const live = q => !isNumber(q.five_hour.resets_at) || q.five_hour.resets_at > data.generated_at;
-  const top = data.limits.filter(q => isNumber(q.five_hour.used) && live(q)).sort((a, b) => b.five_hour.used - a.five_hour.used)[0];
+  const live = w => isNumber(w.used) && (!isNumber(w.resets_at) || w.resets_at > data.generated_at);
+  const windows = data.limits.flatMap(q => [{ ...q.five_hour, far: false, q }, { ...q.seven_day, far: true, q }]);
+  const top = windows.filter(live).sort((a, b) => b.used - a.used)[0];
   const week = data.limits.filter(q => isNumber(q.seven_day.resets_at) && q.seven_day.resets_at > data.generated_at).sort((a, b) => a.seven_day.resets_at - b.seven_day.resets_at)[0];
   const ring = 2 * Math.PI * 15;
   const slices = data.projects.flatMap(p => p.slices).map(s => `<div class="tile"><span class="label">Fatias do ticket ${esc(s.parent)}</span>
@@ -179,10 +179,10 @@ function tiles() {
   const agents = all.filter(a => a.name !== '?');
   const unknown = count(['?']);
   document.getElementById('tiles').innerHTML = `
-    <div class="tile"><span class="label">Agentes</span><b>${agents.length}</b><small>${count(['running'])} rodando · ${count(['review'])} revisão · ${count(['stopped', 'blocked'])} parados · ${count(['done'])} concluídos${unknown ? ` · ${unknown} desconhecidos` : ''}</small></div>
-    <div class="tile alert"><span class="label">Pendências</span><b class="needs">${esc(data.pending.total)}</b><small>${esc(data.pending.agents)} agente precisa de você · ${esc(data.pending.for_you)} em for you</small></div>
+    <div class="tile"><span class="label">Agentes</span><b>${agents.length}</b><small>${count(['needs'])} precisa de você · ${count(['running'])} rodando · ${count(['review'])} revisão · ${count(['stopped', 'blocked'])} parados · ${count(['done'])} concluídos${unknown ? ` · ${unknown} desconhecidos` : ''}</small></div>
+    <div class="tile alert"><span class="label">Pendências</span><b class="needs">${esc(data.pending.total)}</b><small>${esc(data.pending.agents)} com pergunta aberta · ${esc(data.pending.for_you)} em for you</small></div>
     ${slices}
-    <div class="tile"><span class="label">Mais perto do limite</span>${top ? `<b style="color:${heat(top.five_hour.used)}">${top.five_hour.used}%</b><small>${esc(top.account)} · renova ${reset(top.five_hour.resets_at, false)} · lido há ${esc(top.age)}</small>` : '<b>?</b>'}</div>
+    <div class="tile"><span class="label">Mais perto do limite</span>${top ? `<b style="color:${heat(top.used)}">${top.used}%</b><small>${esc(top.q.account)} · ${top.far ? '7 dias' : '5 horas'} · renova ${reset(top.resets_at, top.far)} · lido há ${esc(top.q.age)}</small>` : '<b>?</b>'}</div>
     <div class="tile"><span class="label">Próximo reset de 7 dias</span>${week ? `<b>${reset(week.seven_day.resets_at, true).split(' · ')[0]}</b><small>${esc(week.account)} · ${left(week.seven_day.resets_at)}</small>` : '<b>?</b>'}</div>`;
 }
 
@@ -198,7 +198,7 @@ function conclusion(a) {
   return `<span class="steps" role="img" aria-label="Etapa ${a.step} de 7">${cells}</span><span class="steps-text">${a.step ? STEPS[a.step - 1] : 'não começou'}</span>`;
 }
 
-const task = a => esc(a.ticket === '—' || a.ticket === '?' ? a.role : a.ticket);
+const ticketOrRole = a => esc(a.ticket === '—' || a.ticket === '?' ? a.role : a.ticket);
 
 function projects() {
   const test = FILTERS.find(f => f[0] === active)[2];
@@ -207,7 +207,7 @@ function projects() {
     if (!rows.length) return '';
     return `<section class="panel"><div class="project-head"><h2>${esc(p.name)}</h2><span class="note">${p.agents.length} agentes${p.for_you === 0 ? '' : ` · <span class="needs">${esc(p.for_you)} em for you</span>`}</span></div>
       <table><thead><tr><th class="c-mark"></th><th class="c-name">Agente</th><th class="c-model">Modelo</th><th class="c-task">Tarefa</th><th class="c-pts">Pts</th><th>Status</th><th class="c-time">Tempo</th><th class="c-ctx">Contexto</th><th class="c-done">Conclusão</th></tr></thead><tbody>
-      ${rows.map(a => `<tr class="${a.status === 'needs' ? 'hot' : ''}"><td class="c-mark"><span class="mark ${stateClass(a.status)}">${esc(MARK[a.status] ?? '?')}</span></td><td class="c-name">${esc(a.name)}</td><td class="c-model">${esc(a.model)}</td><td class="c-task">${task(a)}</td><td class="c-pts">${esc(a.points)}</td><td class="c-status">${esc(a.status_text)}</td><td class="c-time">${esc(a.since)}</td>
+      ${rows.map(a => `<tr class="${a.status === 'needs' ? 'hot' : ''}"><td class="c-mark"><span class="mark ${stateClass(a.status)}">${esc(MARK[a.status] ?? '?')}</span></td><td class="c-name">${esc(a.name)}</td><td class="c-model">${esc(a.model)}</td><td class="c-task">${ticketOrRole(a)}</td><td class="c-pts">${esc(a.points)}</td><td class="c-status">${esc(a.status_text)}</td><td class="c-time">${esc(a.since)}</td>
       <td class="c-ctx"><span class="ctx">${bar(a.context, 'var(--ctx)')}<span>${percent(a.context)}</span></span></td><td class="c-done">${conclusion(a)}</td></tr>`).join('')}
       </tbody></table></section>`;
   }).join('');
@@ -217,7 +217,7 @@ function projects() {
 function attention() {
   const order = ['needs', 'review', 'blocked'];
   const items = all.filter(a => order.includes(a.status)).sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status));
-  document.getElementById('attention').innerHTML = items.map(a => `<li><span class="mark ${stateClass(a.status)}">${MARK[a.status]}</span><span>${esc(a.name)} ${task(a)}</span><small>${esc(a.status_text)}</small></li>`).join('');
+  document.getElementById('attention').innerHTML = items.map(a => `<li><span class="mark ${stateClass(a.status)}">${MARK[a.status]}</span><span>${esc(a.name)} ${ticketOrRole(a)}</span><small>${esc(a.status_text)}</small></li>`).join('');
 }
 
 function filters() {
@@ -229,7 +229,7 @@ function filters() {
 }
 
 function render() {
-  all = data.projects.flatMap(p => p.agents.map(a => ({ ...a, project: p.name })));
+  all = data.projects.flatMap(p => p.agents);
   document.getElementById('clock').textContent = clock(data.generated_at);
   tiles(); quotas(); projects(); attention(); filters();
 }
@@ -242,7 +242,7 @@ function failed() {
 
 async function refresh() {
   try {
-    const answer = await fetch('snapshot');
+    const answer = await fetch('snapshot', { signal: AbortSignal.timeout(STALLED_MS) });
     if (!answer.ok) throw new Error(answer.status);
     data = await answer.json();
     render();
