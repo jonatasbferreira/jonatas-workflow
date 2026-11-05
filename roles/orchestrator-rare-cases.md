@@ -20,4 +20,4 @@ On an emergency you, or an executor through you, write one line in `for you`: `E
 
 ## `close the round` with a slice still working
 
-`close the round` with a slice still working: a slice in reviewing, PR open or CI finishes to a verified PR and is recorded as waiting Jonatas. A slice before that stops. Restart its executor, leave its plan and its worktree on disk, write `not finished: <ticket>, plan at <path>` in the state note, and the ticket goes back to the Definer for the next manifest. A held slice not yet dispatched is written `held behind PR #N: <ticket>` and goes back the same way. A stopped slice never resumes by itself.
+`close the round` with a slice still working: a slice in reviewing, PR open or CI finishes to a verified PR and is recorded as waiting Jonatas. A slice before that stops. Close its executor, leave its plan and its worktree on disk, write `not finished: <ticket>, plan at <path>` in the state note, and the ticket goes back to the Definer for the next manifest. A held slice not yet dispatched is written `held behind PR #N: <ticket>` and goes back the same way. A stopped slice never resumes by itself.
