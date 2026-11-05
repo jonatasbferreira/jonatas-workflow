@@ -424,6 +424,14 @@ check "S2 an empty limit field stays unknown and moves no other field" \
 echo '{"providers":[{"id":"codex","lastSuccessAt":"","meters":[{"windows":[{"ring":"session","usedPercent":"","resetsAt":"2030-01-01T00:00:00Z"},{"ring":"weekly","usedPercent":23}]}]}]}' > "$T/maestri/usage/providers/.status.json"
 check "S2 an empty codex field stays unknown and moves no other field" \
   "$(val "$(snap)" '.limits[] | select(.account == "codex") | [.five_hour.used,.five_hour.resets_at,.seven_day.used] | join(" ")')" "? $(date -d 2030-01-01T00:00:00Z +%s) 23"
+for date in '""' '"0"'; do
+  echo '{"providers":[{"id":"codex","lastSuccessAt":'"$date"',"meters":[{"windows":[{"ring":"session","usedPercent":7,"resetsAt":'"$date"'},{"ring":"weekly","usedPercent":23,"resetsAt":'"$date"'}]}]}]}' > "$T/maestri/usage/providers/.status.json"
+  check "S2 a codex date $date is no date" \
+    "$(val "$(snap)" '.limits[] | select(.account == "codex") | [.five_hour.resets_at,.seven_day.resets_at,.updated_at,.age] | join(" ")')" '? ? ? ?'
+done
+printf '{"five_hour":{"used_percentage":1},"seven_day":{"used_percentage":2},"updated_at":"x\\u001f77"}\n' > "$STATE/claude-a.json"
+check "S2 a separator inside a value moves no other field" \
+  "$(val "$(snap)" '.limits[] | select(.account == "claude-a") | [.five_hour.used,.seven_day.used,.updated_at] | join(" ")')" '1 2 ?'
 session "$T/claude-a" s1 "$CWD" busy $(( NOW * 1000 ))
 jq '.status = ""' "$T/claude-a/sessions/s1.json" > "$T/s.json" && mv "$T/s.json" "$T/claude-a/sessions/s1.json"
 transcript "$T/claude-a" "$CWD" s1 <<EOF
@@ -534,6 +542,19 @@ session "$T/claude-a" s3 "$(roledir "$T/code/proj-b-2" AAAA-EXEC)" busy $(( NOW 
 out=$(snap)
 check "S8 a model that is not a name token is ?" "$(val "$(agent "$out" Vazado)" '.model')" '?'
 check "S8 a model that is a name token stays" "$(val "$(agent "$out" Longo)" '.model')" 'claude-opus-5-5[1m]'
+for model in 'claude-sonnet-4@20250514' 'openrouter/anthropic/claude-opus' 'opus[1M]'; do
+  workspace w3 "ProjC" "$(terminal Valido claude_code running "claude --model $model --effort low" AAAA-EXEC "$T/code/proj-c-1")"
+  session "$T/claude-a" s4 "$(roledir "$T/code/proj-c-1" AAAA-EXEC)" busy $(( NOW * 1000 ))
+  check "S8 the model name $model stays" "$(val "$(agent "$(snap)" Valido)" '.model')" "$model"
+done
+workspace w3 "ProjC" "$(terminal Citado claude_code running 'claude --model "opus" --effort low' AAAA-EXEC "$T/code/proj-c-1")"
+check "S8 a quoted model name loses its quotes" "$(val "$(agent "$(snap)" Citado)" '.model')" opus
+workspace w3 "ProjC" "$(terminal Recuo claude_code running "claude --model opus
+KEY=sk-SECRET" AAAA-EXEC "$T/code/proj-c-1")"
+transcript "$T/claude-a" "$(roledir "$T/code/proj-c-1" AAAA-EXEC)" s4 <<EOF
+{"type":"assistant","message":{"model":"claude-fable-5-1","content":[{"type":"text","text":"ok"}]}}
+EOF
+check "S8 a rejected model falls back to the transcript" "$(val "$(agent "$(snap)" Recuo)" '.model')" fable
 hasnt "S8 a secret after the model reaches no terminal line" "$(bash "$ROOT/bin/cockpit" --once 2>&1)" SECRET
 check "S8 a fixture with secret fields shows none of their values in json: the fixture produced a row" "$(val "$(agent "$out" Aracati)" '.model')" sonnet
 hasnt "S8 a fixture with secret fields shows none of their values in json" "$out" SECRET

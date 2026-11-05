@@ -56,7 +56,7 @@ renewal() {
   pad "$text" 7
 }
 
-JOINED='map(tostring | gsub("\n"; " ")) | join("\u001f")'
+JOINED='map(tostring | gsub("[\n\u001f]"; " ")) | join("\u001f")'
 
 fields() {
   local f out=()
@@ -64,8 +64,13 @@ fields() {
   (IFS=$'\037'; printf '%s\n' "${out[*]}")
 }
 
+model_name() {
+  local name=${1//[\"\']/}
+  [[ "$name" =~ ^[A-Za-z0-9._:/@-]+(\[[0-9A-Za-z]+\])?$ ]] && echo "$name"
+}
+
 epoch() {
-  if [ "$1" = - ]; then echo -; else date -d "$1" +%s 2>/dev/null || echo -; fi
+  if [[ "$1" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T ]]; then date -d "$1" +%s 2>/dev/null || echo -; else echo -; fi
 }
 
 limit_rows() {
@@ -207,7 +212,7 @@ agent_row() {
   local project="$1" ws="$2" name="$3" type="$4" cmd="$5" role="$6" cwd="$7" found="$8" roles="$9"
   local now model rolename ticket tstate points foryou since ctx star bstate board_ticket step slices session=- live=no context='?'
   now=$(date +%s)
-  model=$(sed -n 's/.*--model[ =]\([^ ]*\).*/\1/p' <<<"$cmd")
+  model=$(model_name "$(sed -n 's/.*--model[ =]\([^ ]*\).*/\1/p' <<<"$cmd")")
   rolename=$(jq -r --arg r "$(tr 'A-Z' 'a-z' <<<"$role")" '.payload.rolePresets[]? | select((.id | ascii_downcase) == $r) | .name' "$roles" 2>/dev/null | head -1)
   [ -n "$rolename" ] || rolename='?'
 
@@ -254,10 +259,10 @@ agent_row() {
       [ -n "$tokens" ] && [ -n "$size" ] && ctx=$(awk -v t="$tokens" -v s="$size" 'BEGIN { printf "%.0f", t * 100 / s }')
       [ "$tokens" -gt 0 ] 2>/dev/null && [ "$size" -gt 0 ] 2>/dev/null && context=$ctx
       [ "$(pending_question "$tr")" = yes ] && star='!'
-      [ -n "$model" ] || model=$(sed -e 's/^claude-//' -e 's/-[0-9].*//' <<<"$last")
+      [ -n "$model" ] || model=$(model_name "$(sed -e 's/^claude-//' -e 's/-[0-9].*//' <<<"$last")")
     fi
   fi
-  [[ "$model" =~ ^[A-Za-z0-9._:-]+(\[[0-9a-z]+\])?$ ]] || model='?'
+  [ -n "$model" ] || model='?'
   [ "$type" = claude_code ] || live=yes
   if [ "$ticket" = - ] || [ "$ticket" = '?' ]; then
     case "$rolename" in Executor|'?') ;; *) ticket="$rolename" ;; esac
