@@ -3,6 +3,9 @@ export LC_ALL=C.UTF-8
 data="${MAESTRI_DATA_DIR:-$HOME/.maestri}"
 state="${XDG_STATE_HOME:-$HOME/.local/state}/jonatas-workflow/cockpit"
 claude_dirs="${COCKPIT_CLAUDE_DIRS:-$HOME/.claude:$HOME/.claude-rea:$HOME/.claude-personal}"
+proc_dir="${COCKPIT_PROC_DIR:-/proc}"
+codex_dir="${COCKPIT_CODEX_DIR:-$HOME/.codex/sessions}"
+declare -A procs=()
 
 age() {
   local s=$(( $1 ))
@@ -146,7 +149,7 @@ context_tokens() {
 find_session() {
   local cwd="$1" dir f best="" best_at=-1 at pid
   local IFS=:
-  for dir in $claude_dirs; do
+  for dir in $claude_dirs${2:+:$2}; do
     for f in "$dir"/sessions/*.json; do
       [ -f "$f" ] || continue
       IFS=' ' read -r at pid <<<"$(jq -r --arg cwd "$cwd" 'select(.cwd == $cwd) | "\(.statusUpdatedAt // 0) \(.pid // 0)"' "$f" 2>/dev/null)"
@@ -156,6 +159,58 @@ find_session() {
     done
   done
   echo "$best"
+}
+
+find_rollout() {
+  local f
+  while IFS= read -r f; do
+    [ "$(head -n 1 "$f" | jq -r 'select(.type == "session_meta") | .payload.cwd // empty' 2>/dev/null)" = "$1" ] && { echo "$f"; return; }
+  done < <(find "$codex_dir" -name 'rollout-*.jsonl' -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-)
+}
+
+rollout_field() {
+  grep -F "\"$1\"" "$2" | jq -R 'fromjson? // empty' | jq -s -r "$3" 2>/dev/null
+}
+
+procs_map() {
+  local e rec comm id readable=no
+  for e in "$proc_dir"/[0-9]*/environ; do
+    [ -r "$e" ] && { readable=yes; break; }
+  done
+  [ "$readable" = yes ] || return 1
+  while IFS= read -r -d '' rec; do
+    id=${rec#*/environ:MAESTRI_TERMINAL_ID=}
+    [ -n "$id" ] || continue
+    comm=''
+    read -r comm 2>/dev/null <"${rec%%/environ:*}/comm"
+    procs[$id]+="$comm"$'\n'
+  done < <(grep -azH '^MAESTRI_TERMINAL_ID=' "$proc_dir"/[0-9]*/environ 2>/dev/null)
+}
+
+command_word() {
+  local ws w
+  read -ra ws <<<"$1"
+  for w in "${ws[@]}"; do
+    [ "$w" = env ] && continue
+    [[ "$w" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] && continue
+    w=${w##*/}
+    echo "${w:0:15}"
+    return
+  done
+}
+
+agent_kind() {
+  local own comm kind=''
+  own=$(command_word "$2")
+  while IFS= read -r comm; do
+    case "$comm" in
+      '') ;;
+      claude|codex) echo "$comm"; return ;;
+      sh|bash|zsh|dash|fish) ;;
+      "$own") kind=other ;;
+    esac
+  done <<<"${procs[$1]:-}"
+  echo "$kind"
 }
 
 translate() {
@@ -209,7 +264,7 @@ parent_slices() {
 }
 
 agent_row() {
-  local project="$1" ws="$2" name="$3" type="$4" cmd="$5" role="$6" cwd="$7" found="$8" roles="$9"
+  local project="$1" ws="$2" name="$3" type="$4" cmd="$5" role="$6" cwd="$7" found="$8" roles="$9" rollout="${10}"
   local now model rolename ticket tstate points foryou since ctx star bstate board_ticket step slices session=- live=no context='?'
   now=$(date +%s)
   model=$(model_name "$(sed -n 's/.*--model[ =]\([^ ]*\).*/\1/p' <<<"$cmd")")
@@ -262,6 +317,17 @@ agent_row() {
       [ -n "$model" ] || model=$(model_name "$(sed -e 's/^claude-//' -e 's/-[0-9].*//' <<<"$last")")
     fi
   fi
+  if [ -n "$rollout" ]; then
+    local rtokens rwindow rmtime
+    rmtime=$(stat -c %Y "$rollout" 2>/dev/null)
+    [[ "$rmtime" =~ ^[0-9]+$ ]] && since=$(age $((now - rmtime)))
+    [ -n "$model" ] || model=$(model_name "$(rollout_field turn_context "$rollout" '[.[] | select(.type == "turn_context") | .payload.model] | last // empty')")
+    IFS=' ' read -r rtokens rwindow <<<"$(rollout_field token_count "$rollout" '[.[] | select(.payload.type? == "token_count" and .payload.info != null) | .payload.info] | last // empty | "\(.last_token_usage.input_tokens // 0) \(.model_context_window // 0)"')"
+    if [ "$rtokens" -gt 0 ] 2>/dev/null && [ "$rwindow" -gt 0 ] 2>/dev/null; then
+      ctx=$(awk -v t="$rtokens" -v s="$rwindow" 'BEGIN { printf "%.0f", t * 100 / s }')
+      context=$ctx
+    fi
+  fi
   [ -n "$model" ] || model='?'
   [ "$type" = claude_code ] || live=yes
   if [ "$ticket" = - ] || [ "$ticket" = '?' ]; then
@@ -283,8 +349,9 @@ any_session() {
 }
 
 rows() {
-  local roles="$data/preferences.json" w sessions=no
+  local roles="$data/preferences.json" w sessions=no mapped=no
   any_session && sessions=yes
+  procs_map && mapped=yes
   for w in "$data"/workspaces/*/; do
     [ -f "$w/workspace.json" ] || continue
     w=${w%/}
@@ -294,22 +361,31 @@ rows() {
         | select(.agentType != null and .agentType != "generic_shell")
         | [($p.name | dash), .name, .agentType, (.command | dash), (.assignedRoleId | dash),
            ((.workingDirectory | dash) as $d | if $d == "-" then ($p.workingDirectory | dash) else $d end),
-           (.status | dash)] | @tsv' "$w/workspace.json" 2>/dev/null); then
+           (.status | dash), (.id | dash)] | @tsv' "$w/workspace.json" 2>/dev/null); then
       fields '?' '?' '?' '?' '?' '?' '?' '?' - '?' '?' '?' '?' '?' - '?'
       continue
     fi
-    local project name type cmd role wd status cwd found
-    while IFS=$'\t' read -r project name type cmd role wd status; do
+    local project name type cmd role wd status id cwd found rollout kind
+    while IFS=$'\t' read -r project name type cmd role wd status id; do
       [ -n "$name" ] || continue
       cwd=$wd
       [ "$role" = - ] || cwd="$wd/.maestri/roles/$(tr 'A-Z' 'a-z' <<<"$role")"
-      found=''
-      [ "$type" = claude_code ] && found=$(find_session "$cwd")
-      if [ -z "$found" ]; then
-        [ "$status" = running ] || continue
-        [ "$type" != claude_code ] || [ "$sessions" = no ] || continue
+      found=''; rollout=''
+      if [ "$mapped" = yes ]; then
+        kind=$(agent_kind "$id" "$cmd")
+        [ -n "$kind" ] || continue
+        case "$kind/$type" in
+          claude/claude_code|claude/custom) found=$(find_session "$cwd" "$(sed -n 's/.*CLAUDE_CONFIG_DIR=\([^ ]*\).*/\1/p' <<<"$cmd" | head -1)") ;;
+          codex/*) rollout=$(find_rollout "$cwd") ;;
+        esac
+      else
+        [ "$type" = claude_code ] && found=$(find_session "$cwd")
+        if [ -z "$found" ]; then
+          [ "$status" = running ] || continue
+          [ "$type" != claude_code ] || [ "$sessions" = no ] || continue
+        fi
       fi
-      agent_row "$project" "$w" "$name" "$type" "$cmd" "$role" "$cwd" "$found" "$roles"
+      agent_row "$project" "$w" "$name" "$type" "$cmd" "$role" "$cwd" "$found" "$roles" "$rollout"
     done <<<"$list"
   done
 }
