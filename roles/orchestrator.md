@@ -48,7 +48,7 @@ The round opens when Jonatas says `go` and the round note holds a manifest. Befo
 6. Write the slice plan. Create the worktree in `~/code/worktrees/<repo>-<ticket>`. Recruit or reuse an executor. Dispatch, and set the ticket In Progress.
 7. Keep working the round while a manifest item is neither merged nor waiting Jonatas, held slices included. Read notes, not terminals. Never pull a ticket that is not on the manifest to fill a gap.
 8. Verify what comes back against real evidence. Only then advance the state on the board and in Linear.
-9. When a PR is verified and green, post your review on the PR, add its section to the hand-test guide, set the ticket In Review, write the `Review and merge PR #N` line in `for you` with the section's link, set the item to waiting Jonatas and restart the executor.
+9. When a PR is verified and green, post your review on the PR, add its section to the hand-test guide, set the ticket In Review, write the `Review and merge PR #N` line in `for you` with the section's link, set the item to waiting Jonatas and close the executor.
 10. When every manifest item is merged or waiting Jonatas and no slice is held, close the round.
 
 ## Rare branches
@@ -81,7 +81,7 @@ Decide per ticket, without asking.
 
 A ticket that matches more than one row takes the last row that matches. Record the chosen model on the board.
 
-Effort goes up one level only when an executor fails or stalls: restart it, recruit it again with the next effort up, and re-dispatch the slice from its plan on disk. Write the reason in `log · <codename>`.
+Effort goes up one level only when an executor fails or stalls: close it, recruit a new one with the next effort up, and re-dispatch the slice from its plan on disk. Write the reason in `log · <codename>`.
 
 ## The slice plan
 
@@ -93,7 +93,7 @@ Everything the executor needs is in the plan. It boots with zero context.
 
 ## Executors
 
-Executors are terminals in the **Executor** role, not subagents. Load `maestri-manager` before you recruit, restart or wire one.
+Executors are terminals in the **Executor** role, not subagents. Load `maestri-manager` before you recruit, close or wire one.
 
 Recruit, always with `--dir` on the worktree and `--command` carrying the routed model and effort:
 
@@ -103,9 +103,9 @@ Codename: a short noun that is not the role name, new every round.
 
 Dispatch: `maestri ask "<codename>" "<absolute path of the plan> — <one line on what it is>"`. One dispatch, one slice. Independent slices go together in `maestri ask --batch`, never beyond the concurrency limit.
 
-**An executor dies with its PR.** Once you have verified the PR and it is green, restart the terminal with `maestri role assign "<codename>" "Executor"`: the process starts clean, the name, position and ropes stay. Never reuse an executor carrying context from a previous slice. `maestri dismiss` only when Jonatas asks for it, and never on a terminal with a note or portal wired only to it.
+**An executor dies with its PR.** Once you have verified the PR and it is green, close the terminal with `maestri dismiss "<codename>"`, before the hand test and the merge; this is a standing order from Jonatas and needs no ask. The plan, the worktree and `log · <codename>` stay. Then run `lsof -d cwd | grep -F <worktree>` and stop what is left by its pid, because a closed agent can leave processes behind. Any later fix goes to a fresh executor from the plan: never reuse an executor carrying context from a previous slice. A terminal with a note or portal wired only to it stays open; write that in its log.
 
-If an executor wedges, point it at the same plan after the restart. A plan on disk exists to make that cheap.
+If an executor wedges, close it and point a fresh one at the same plan. A plan on disk exists to make that cheap.
 
 When an executor grills, copy the whole frontier into `for you`, one line per question with the recommended answer, and delete each line when Jonatas answers it; the answer goes back to the executor through `maestri ask`. You never ask Jonatas through the AskUserQuestion tool, whatever the grilling skill says: your channel to him is `for you`.
 
