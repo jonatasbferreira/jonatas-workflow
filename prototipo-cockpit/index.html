@@ -1,0 +1,222 @@
+<title>Cockpit de agentes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+/* Layout: a monitoring console. Summary strip, quota panels, then project tables, with attention, filters and legend in a right rail. */
+:root {
+  color-scheme: dark;
+  --bg: #0b1017; --panel: #101722; --row: #151e2b; --line: #263244; --fg: #dbe3ee; --dim: #8693a6;
+  --accent: #78a9f5; --ok: #57d68d; --warn: #f2c14e; --crit: #f26d6d; --ctx: #a78bfa; --track: #243042;
+  --hot: rgba(242, 193, 78, .13);
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+body { background: var(--bg); color: var(--fg); font: 13px/1.45 var(--mono); font-variant-numeric: tabular-nums; }
+.page { max-width: 1640px; margin: 0 auto; padding-block: 14px 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 12px; }
+header { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.brand { background: var(--accent); color: #0b1017; font-weight: 700; padding: 3px 12px; border-radius: 5px; letter-spacing: .06em; }
+.sub { color: var(--dim); min-width: 0; }
+.sample { color: var(--warn); border: 1px solid var(--warn); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
+.clock { margin-left: auto; border: 1px solid var(--line); border-radius: 5px; padding: 2px 10px; }
+.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.tile, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; min-width: 0; }
+.tile { padding: 10px 14px; display: grid; gap: 2px; }
+.tile.alert { border-color: var(--warn); }
+.tile b { font-size: 21px; font-weight: 700; line-height: 1.25; }
+.tile small, .note { color: var(--dim); font-size: 12px; }
+.label { color: var(--dim); font-size: 12px; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: auto auto 1fr; gap: 12px; grid-template-areas: "quotas attention" "projects filters" "projects legend"; }
+.quotas { grid-area: quotas; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.attention { grid-area: attention; } .projects { grid-area: projects; } .filter-panel { grid-area: filters; } .legend-panel { grid-area: legend; align-self: start; }
+.stack { display: grid; gap: 12px; min-width: 0; }
+.panel { padding: 11px 14px; }
+h2 { margin: 0 0 9px; font-size: 14px; font-weight: 500; text-wrap: balance; }
+h2 span { color: var(--dim); font-weight: 400; }
+.quota { display: grid; grid-template-columns: 118px minmax(50px, 1fr) 38px 132px; gap: 9px; align-items: center; padding: 3px 0; }
+.quota .pct { text-align: right; font-weight: 500; }
+.quota .when { color: var(--dim); font-size: 12px; text-align: right; white-space: nowrap; }
+.bar { height: 9px; background: var(--track); border-radius: 2px; overflow: hidden; display: block; }
+.bar i { display: block; height: 100%; }
+.project-head { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+.project-head h2 { margin: 0; color: var(--accent); font-weight: 700; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+th { text-align: left; color: var(--dim); font-weight: 400; font-size: 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th, td { box-sizing: border-box; padding: 5px 6px; }
+td { border-bottom: 1px solid var(--row); overflow-wrap: anywhere; }
+.c-mark { width: 26px; } .c-name { width: 116px; } .c-model { width: 62px; } .c-task { width: 110px; } .c-pts { width: 38px; } .c-time { width: 50px; } .c-ctx { width: 132px; } .c-done { width: 196px; }
+tr:last-child td { border-bottom: 0; }
+tr.hot { background: var(--hot); }
+td.c-name { font-weight: 700; }
+td.c-model { color: var(--accent); }
+.c-time { text-align: right; }
+.mark { display: inline-block; width: 1.2em; text-align: center; font-weight: 700; }
+.running { color: var(--ok); } .review { color: var(--warn); } .stopped { color: var(--dim); } .done { color: var(--ok); } .blocked { color: var(--crit); } .needs { color: var(--warn); }
+.ctx { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; align-items: center; }
+.ctx span:last-child { text-align: right; }
+.steps { display: inline-flex; gap: 2px; vertical-align: middle; margin-right: 8px; }
+.steps i { width: 10px; height: 9px; background: var(--track); border-radius: 1px; }
+.steps i.on { background: var(--ok); }
+.steps-text { color: var(--dim); font-size: 12px; }
+.attn { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px 16px; }
+.attn li { display: grid; grid-template-columns: 1.3em 1fr; gap: 4px 6px; }
+.attn small { grid-column: 2; color: var(--dim); font-size: 12px; }
+.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; text-align: left; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.legend { display: grid; gap: 3px; font-size: 12px; color: var(--dim); }
+.empty { color: var(--dim); padding: 8px; }
+@media (max-width: 1240px) {
+  .main { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "quotas" "attention" "filters" "projects" "legend"; }
+  .tile { padding: 8px 11px; } .tile b { font-size: 18px; } .tile small { font-size: 11.5px; line-height: 1.35; }
+  .attn { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .filter-panel { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding-block: 7px; }
+  .filter-panel h2 { margin: 0; }
+  .filters { display: flex; flex-wrap: wrap; }
+  .legend-panel { padding-block: 7px; }
+  .legend-panel h2 { display: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 3px 16px; }
+}
+@media (max-width: 900px) {
+  .tiles { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .tile { grid-column: span 2; } .tile:nth-child(-n+2) { grid-column: span 3; }
+  .quotas { grid-template-columns: minmax(0, 1fr); }
+  thead { display: none; }
+  table, tbody { display: block; }
+  tr { display: grid; grid-template-columns: 20px minmax(0, 1fr) 64px 108px 44px; gap: 2px 10px; padding: 6px 4px; border-bottom: 1px solid var(--row); grid-template-areas: "mark name model task time" ". status status status pts" ". ctx done done done"; }
+  tr:last-child { border-bottom: 0; }
+  td, tr:last-child td { display: block; padding: 0; border: 0; width: auto; }
+  td.c-mark { grid-area: mark; } td.c-name { grid-area: name; } td.c-model { grid-area: model; } td.c-task { grid-area: task; } td.c-pts { grid-area: pts; text-align: right; white-space: nowrap; } td.c-status { grid-area: status; } td.c-time { grid-area: time; } td.c-ctx { grid-area: ctx; } td.c-done { grid-area: done; }
+  td.c-pts:not(:empty)::after { content: " pts"; color: var(--dim); }
+  td.c-ctx::before { content: "contexto"; color: var(--dim); font-size: 12px; margin-right: 8px; }
+  td.c-ctx { display: flex; align-items: center; min-width: 0; } .ctx { flex: 1; min-width: 0; }
+}
+@media (max-width: 560px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile, .tile:nth-child(-n+2) { grid-column: auto; } .tile:first-child { grid-column: 1 / -1; }
+  .quota { grid-template-columns: 1fr 42px; } .quota .bar { grid-column: 1 / -1; grid-row: 2; } .quota .when { grid-column: 1 / -1; text-align: left; }
+  tr { grid-template-columns: 20px minmax(0, 1fr) 64px 44px; grid-template-areas: "mark name model time" ". task task pts" ". status status status" ". ctx ctx ctx" ". done done done"; }
+}
+</style>
+
+<div class="page">
+  <header>
+    <span class="brand">COCKPIT</span>
+    <span class="sub">Agentes de IA · Validação e acompanhamento</span>
+    <span class="sample">Dados de exemplo</span>
+    <span class="clock">18:35</span>
+  </header>
+  <section class="tiles" id="tiles"></section>
+  <div class="main">
+    <div class="quotas" id="quotas"></div>
+    <section class="panel attention"><h2>Atenção</h2><ul class="attn" id="attention"></ul></section>
+    <div class="stack projects" id="projects"></div>
+    <section class="panel filter-panel"><h2>Filtros</h2><div class="filters" id="filters"></div></section>
+    <section class="panel legend-panel"><h2>Legenda</h2>
+        <div class="legend">
+          <span><span class="mark running">●</span> Rodando agora</span>
+          <span><span class="mark review">◐</span> Revisando</span>
+          <span><span class="mark stopped">○</span> Parado</span>
+          <span><span class="mark blocked">■</span> Bloqueado por outro ticket</span>
+          <span><span class="mark done">✓</span> Concluído</span>
+          <span><span class="mark needs">!</span> Precisa de você</span>
+          <span>Cota: limite da conta de IA</span>
+          <span>Contexto: memória usada pelo agente</span>
+          <span>Conclusão: etapa do ticket no board</span>
+        </div>
+      </section>
+  </div>
+</div>
+
+<script>
+const STEPS = ['reconhecimento', 'implementando', 'revisando', 'PR aberto', 'CI', 'verificado', 'mergeado'];
+const data = {
+  quotas: [
+    { ai: 'claude-personal', five: 94, fiveReset: '18:50', fiveLeft: 'em 15m', seven: 51, sevenReset: 'ter 18:59', sevenLeft: 'em 5d' },
+    { ai: 'claude', five: 0, fiveReset: '19:30', fiveLeft: 'em 55m', seven: 0, sevenReset: 'ter 19:00', sevenLeft: 'em 5d' },
+    { ai: 'codex', five: 0, fiveReset: '23:30', fiveLeft: 'em 4h', seven: 5, sevenReset: 'qui 20:51', sevenLeft: 'em 1d' }
+  ],
+  parent: { ticket: '#171', done: 4, total: 9 },
+  projects: [
+    { name: 'APP FINANCEIRO', forYou: 2, agents: [
+      { name: 'Claude Code', model: 'opus', task: 'Orquestrador', state: 'running', text: 'rodando comando', time: '5m', ctx: 30 },
+      { name: 'Definidor', model: 'opus', task: 'Definidor', state: 'stopped', text: 'parado', time: '1m', ctx: 18 },
+      { name: 'Sanfona', model: 'opus', task: '#178', pts: 5, state: 'needs', text: 'aguarda você: mergear PR #192', time: '12m', ctx: 24, step: 6 },
+      { name: 'Cacimba', model: 'opus', task: '#174', pts: 5, state: 'review', text: 'revisando PR #190', time: '26m', ctx: 19, step: 3 },
+      { name: 'Jambo', model: 'sonnet', task: '#179', pts: 2, state: 'blocked', text: 'aguarda #173 e #174', time: '40m', ctx: null, step: 0 },
+      { name: 'Tucum', model: 'sonnet', task: '#109', pts: 2, state: 'done', text: 'mergeado PR #187', time: '1h', ctx: 11, step: 7 }
+    ]},
+    { name: 'SHEMA', forYou: 0, agents: [
+      { name: 'Definidor', model: 'fable', task: 'Definidor', state: 'stopped', text: 'parado', time: '5m', ctx: null },
+      { name: 'Orquestrador', model: 'opus', task: 'Orquestrador', state: 'stopped', text: 'parado', time: '5m', ctx: 7 }
+    ]}
+  ]
+};
+const MARK = { running: '●', review: '◐', stopped: '○', blocked: '■', done: '✓', needs: '!' };
+const FILTERS = [
+  ['all', 'Todos', () => true],
+  ['open', 'Pendentes', a => a.state === 'needs' || a.state === 'review'],
+  ['running', 'Rodando', a => a.state === 'running'],
+  ['stopped', 'Parados', a => a.state === 'stopped' || a.state === 'blocked'],
+  ['done', 'Concluídos', a => a.state === 'done']
+];
+let active = 'all';
+const all = data.projects.flatMap(p => p.agents.map(a => ({ ...a, project: p.name })));
+const count = s => all.filter(a => s.includes(a.state)).length;
+const heat = p => p >= 80 ? 'var(--crit)' : p >= 50 ? 'var(--warn)' : 'var(--ok)';
+const bar = (p, colour) => `<span class="bar"><i style="width:${p}%;background:${colour}"></i></span>`;
+
+function tiles() {
+  const pending = count(['needs']) + data.projects.reduce((n, p) => n + p.forYou, 0);
+  const top = [...data.quotas].sort((a, b) => b.five - a.five)[0];
+  const week = data.quotas.find(q => q.ai === 'codex');
+  const ring = 2 * Math.PI * 15;
+  document.getElementById('tiles').innerHTML = `
+    <div class="tile"><span class="label">Agentes</span><b>${all.length}</b><small>${count(['running'])} rodando · ${count(['review'])} revisão · ${count(['stopped', 'blocked'])} parados · ${count(['done'])} concluídos</small></div>
+    <div class="tile alert"><span class="label">Pendências</span><b class="needs">${pending}</b><small>${count(['needs'])} agente precisa de você · ${data.projects[0].forYou} em for you</small></div>
+    <div class="tile"><span class="label">Fatias do ticket ${data.parent.ticket}</span>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--track)" stroke-width="5"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--ok)" stroke-width="5" stroke-dasharray="${ring * data.parent.done / data.parent.total} ${ring}" transform="rotate(-90 18 18)"/></svg><b>${data.parent.done} de ${data.parent.total}</b></div></div>
+    <div class="tile"><span class="label">Mais perto do limite</span><b style="color:${heat(top.five)}">${top.five}%</b><small>${top.ai} · renova ${top.fiveReset} ${top.fiveLeft}</small></div>
+    <div class="tile"><span class="label">Próximo reset de 7 dias</span><b>${week.sevenReset}</b><small>${week.ai} · ${week.sevenLeft}</small></div>`;
+}
+
+function quotas() {
+  const panel = (title, span, key, reset, left) => `<section class="panel"><h2>${title} <span>${span}</span></h2>${data.quotas.map(q => `
+    <div class="quota"><span>${q.ai}</span>${bar(q[key], heat(q[key]))}<span class="pct">${q[key]}%</span><span class="when">${q[reset]} · ${q[left]}</span></div>`).join('')}</section>`;
+  document.getElementById('quotas').innerHTML = panel('Cota de 5 horas', 'por IA', 'five', 'fiveReset', 'fiveLeft') + panel('Cota de 7 dias', 'por IA', 'seven', 'sevenReset', 'sevenLeft');
+}
+
+function conclusion(a) {
+  if (a.step === undefined) return '<span class="steps-text">—</span>';
+  const cells = STEPS.map((_, i) => `<i class="${i < a.step ? 'on' : ''}"></i>`).join('');
+  return `<span class="steps" role="img" aria-label="Etapa ${a.step} de 7">${cells}</span><span class="steps-text">${a.step ? STEPS[a.step - 1] : 'não começou'}</span>`;
+}
+
+function projects() {
+  const test = FILTERS.find(f => f[0] === active)[2];
+  const blocks = data.projects.map(p => {
+    const rows = p.agents.filter(test).sort((a, b) => (b.state === 'needs') - (a.state === 'needs'));
+    if (!rows.length) return '';
+    return `<section class="panel"><div class="project-head"><h2>${p.name}</h2><span class="note">${p.agents.length} agentes${p.forYou ? ` · <span class="needs">${p.forYou} em for you</span>` : ''}</span></div>
+      <table><thead><tr><th class="c-mark"></th><th class="c-name">Agente</th><th class="c-model">Modelo</th><th class="c-task">Tarefa</th><th class="c-pts">Pts</th><th>Status</th><th class="c-time">Tempo</th><th class="c-ctx">Contexto</th><th class="c-done">Conclusão</th></tr></thead><tbody>
+      ${rows.map(a => `<tr class="${a.state === 'needs' ? 'hot' : ''}"><td class="c-mark"><span class="mark ${a.state}">${MARK[a.state]}</span></td><td class="c-name">${a.name}</td><td class="c-model">${a.model}</td><td class="c-task">${a.task}</td><td class="c-pts">${a.pts ?? ''}</td><td class="c-status">${a.text}</td><td class="c-time">${a.time}</td>
+      <td class="c-ctx"><span class="ctx">${bar(a.ctx ?? 0, 'var(--ctx)')}<span>${a.ctx === null ? '?' : a.ctx + '%'}</span></span></td><td class="c-done">${conclusion(a)}</td></tr>`).join('')}
+      </tbody></table></section>`;
+  }).join('');
+  document.getElementById('projects').innerHTML = blocks || '<section class="panel empty">Nenhum agente neste filtro.</section>';
+}
+
+function attention() {
+  const order = ['needs', 'review', 'blocked'];
+  const items = all.filter(a => order.includes(a.state)).sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state));
+  document.getElementById('attention').innerHTML = items.map(a => `<li><span class="mark ${a.state}">${MARK[a.state]}</span><span>${a.name} ${a.task}</span><small>${a.text}</small></li>`).join('');
+}
+
+function filters() {
+  const box = document.getElementById('filters');
+  box.innerHTML = FILTERS.map(([id, label, test]) => `<button id="filter-${id}" type="button" data-id="${id}" aria-pressed="${id === active}">${label} (${all.filter(test).length})</button>`).join('');
+  box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { active = b.dataset.id; filters(); projects(); }));
+}
+
+tiles(); quotas(); projects(); attention(); filters();
+</script>
