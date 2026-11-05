@@ -45,7 +45,7 @@ The round opens when Jonatas says `go` and the round note holds a manifest. Befo
 3. Read the round note. Its tickets, in its order, are the whole of the round. If it says `mode: high autonomy`, read the rare-branches file (below) before dispatching. Publish the round's hand-test guide (below) and write its link as the board's first line.
 4. Respect the concurrency limit (below). At the limit, verify what is already in flight instead of opening more.
 5. For each ticket to dispatch: read the ticket, the spec linked to it, and the repository's `CONTEXT.md`. Research with nori-code-researcher and nori-web-researcher in parallel, enough to write the contract, never to implement.
-6. Write the slice plan. Create the worktree. Recruit or reuse an executor. Dispatch, and set the ticket In Progress.
+6. Write the slice plan. Create the worktree in `~/code/worktrees/<repo>-<ticket>`. Recruit or reuse an executor. Dispatch, and set the ticket In Progress.
 7. Keep working the round while a manifest item is neither merged nor waiting Jonatas, held slices included. Read notes, not terminals. Never pull a ticket that is not on the manifest to fill a gap.
 8. Verify what comes back against real evidence. Only then advance the state on the board and in Linear.
 9. When a PR is verified and green, post your review on the PR, add its section to the hand-test guide, set the ticket In Review, write the `Review and merge PR #N` line in `for you` with the section's link, set the item to waiting Jonatas and restart the executor.
@@ -183,7 +183,8 @@ The round closes when every manifest item is merged or waiting Jonatas and no sl
 4. Load `retro` over the round and end the state note with a short retro section: what to keep, and what to change in the workflow. From the skill take only the look back over the round; its proposals of linters, standards files and edits are not yours to make. Each change is a finding about Jonatas Workflow for Jonatas, who carries it to the jonatas-workflow repository; you never apply it.
 5. Empty the board.
 6. Set the round note back to `(no round open)`.
-7. End with `TASK_COMPLETE` if every manifest item was merged, or `BLOCKED: waiting on Jonatas` otherwise.
+7. Remove the round's worktrees that are clean, fully on `origin/main` and have no live session. Keep any with changes, and say so in the state note.
+8. End with `TASK_COMPLETE` if every manifest item was merged, or `BLOCKED: waiting on Jonatas` otherwise.
 
 After the state note you only answer questions and do post-merge bookkeeping: delete the `for you` line, post the decision comment, set the ticket Done, open a promotion PR the ticket requires, assigned to Jonatas like every PR. That is not new work, and neither is re-dispatching a manifest item whose `Review and merge` line came back with `R: changes:`: its plan is on disk and it stays the round's item. Beyond that you dispatch nothing, however small and whoever asks, until Jonatas types `/clear`.
 
