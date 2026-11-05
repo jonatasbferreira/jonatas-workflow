@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 import json
+import os
 import re
+import signal
 import subprocess
 import sys
+import threading
+from concurrent.futures import Future
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -10,6 +14,53 @@ BIN = Path(__file__).resolve().parent
 PAGE = BIN.parent / "templates" / "cockpit.html"
 SNAPSHOT_SECONDS = 20
 HOST = re.compile(r"(localhost|127\.0\.0\.1)(:[0-9]+)?")
+ORIGIN = re.compile(r"https?://(localhost|127\.0\.0\.1)(:[0-9]+)?")
+
+
+class Snapshots:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.running = None
+        self.process = None
+
+    def take(self):
+        with self.lock:
+            leader = self.running is None
+            if leader:
+                self.running = Future()
+            running = self.running
+        if leader:
+            body = None
+            try:
+                body = self.collect()
+            finally:
+                with self.lock:
+                    self.running = None
+                running.set_result(body)
+        return running.result()
+
+    def collect(self):
+        self.process = subprocess.Popen([BIN / "cockpit", "--json"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+        try:
+            body, _ = self.process.communicate(timeout=SNAPSHOT_SECONDS)
+            json.loads(body)
+            return body if self.process.returncode == 0 else None
+        except (subprocess.TimeoutExpired, ValueError):
+            self.kill()
+            self.process.wait()
+            return None
+        finally:
+            self.process = None
+
+    def kill(self):
+        if self.process:
+            try:
+                os.killpg(self.process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+snapshots = Snapshots()
 
 
 class Cockpit(BaseHTTPRequestHandler):
@@ -17,7 +68,8 @@ class Cockpit(BaseHTTPRequestHandler):
         if not super().parse_request():
             return False
         hosts = self.headers.get_all("Host") or []
-        if len(hosts) != 1 or not HOST.fullmatch(hosts[0]):
+        origins = self.headers.get_all("Origin") or []
+        if len(hosts) != 1 or not HOST.fullmatch(hosts[0]) or not all(ORIGIN.fullmatch(origin) for origin in origins):
             self.send_error(403)
             return False
         return True
@@ -26,18 +78,16 @@ class Cockpit(BaseHTTPRequestHandler):
         if self.path == "/":
             self.answer("text/html; charset=utf-8", PAGE.read_bytes())
         elif self.path == "/snapshot":
-            self.snapshot()
+            self.answer_snapshot()
         else:
             self.send_error(404)
 
-    def snapshot(self):
-        try:
-            run = subprocess.run([BIN / "cockpit", "--json"], capture_output=True, check=True, timeout=SNAPSHOT_SECONDS)
-            json.loads(run.stdout)
-        except (subprocess.SubprocessError, ValueError):
+    def answer_snapshot(self):
+        body = snapshots.take()
+        if body is None:
             self.send_error(500)
             return
-        self.answer("application/json", run.stdout)
+        self.answer("application/json", body)
 
     def answer(self, kind, body):
         self.send_response(200)
@@ -59,11 +109,15 @@ def main():
         server = ThreadingHTTPServer(("127.0.0.1", int(port)), Cockpit)
     except OSError as error:
         sys.exit(f"cockpit: cannot listen on 127.0.0.1:{port}: {error.strerror}")
+    for stop in (signal.SIGTERM, signal.SIGHUP):
+        signal.signal(stop, lambda *_: sys.exit(0))
     print(f"Cockpit at http://127.0.0.1:{port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        snapshots.kill()
 
 
 main()

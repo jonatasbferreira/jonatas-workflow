@@ -406,6 +406,34 @@ check "S12 a board line with an empty field still ends and exits 0" "$code" 0
 
 reset
 one_agent Aracati
+workspace w2 "ProjB" "$(terminal Outro claude_code running 'claude --model opus' AAAA-EXEC "$T/code/proj-b-1")"
+note w1 board "Aracati · #184"$'\t'" · implementing · sonnet · 3"
+note w1 "for you" "- [ ] one"
+note w2 "for you" "- [ ] two" "- [ ] three"
+out=$(snap); code=$?
+check "S2 a tab in a board line gives ? in that field and exit 0: exit code" "$code" 0
+check "S2 a tab in a board line gives ? in that field and exit 0: the field" "$(val "$(agent "$out" Aracati)" '.ticket')" '?'
+check "S2 a tab in a board line gives ? in that field and exit 0: for you stays" "$(val "$out" '[.projects[].for_you] | @csv')" '1,2'
+check "S2 a tab in a board line gives ? in that field and exit 0: the other project stays" "$(val "$(agent "$out" Outro)" '.model')" opus
+
+reset
+one_agent Aracati
+echo '{"five_hour":{"used_percentage":"","resets_at":1793860000},"seven_day":{"used_percentage":40,"resets_at":1793860001},"updated_at":""}' > "$STATE/claude-a.json"
+check "S2 an empty limit field stays unknown and moves no other field" \
+  "$(val "$(snap)" '.limits[] | select(.account == "claude-a") | [.five_hour.used,.five_hour.resets_at,.seven_day.used,.seven_day.resets_at,.updated_at] | join(" ")')" '? 1793860000 40 1793860001 ?'
+echo '{"providers":[{"id":"codex","lastSuccessAt":"","meters":[{"windows":[{"ring":"session","usedPercent":"","resetsAt":"2030-01-01T00:00:00Z"},{"ring":"weekly","usedPercent":23}]}]}]}' > "$T/maestri/usage/providers/.status.json"
+check "S2 an empty codex field stays unknown and moves no other field" \
+  "$(val "$(snap)" '.limits[] | select(.account == "codex") | [.five_hour.used,.five_hour.resets_at,.seven_day.used] | join(" ")')" "? $(date -d 2030-01-01T00:00:00Z +%s) 23"
+session "$T/claude-a" s1 "$CWD" busy $(( NOW * 1000 ))
+jq '.status = ""' "$T/claude-a/sessions/s1.json" > "$T/s.json" && mv "$T/s.json" "$T/claude-a/sessions/s1.json"
+transcript "$T/claude-a" "$CWD" s1 <<EOF
+$(usage_line 2 1000 99000)
+EOF
+state_file claude-a "$NOW" 200000
+check "S2 an empty session status moves no other field" "$(val "$(agent "$(snap)" Aracati)" '.context')" 50
+
+reset
+one_agent Aracati
 session "$T/claude-a" s1 "$CWD" busy $(( NOW * 1000 ))
 transcript "$T/claude-a" "$CWD" s1 <<EOF
 {"type":"assistant","message":{"content":[{"type":"text","text":"sem usage"}]}}
@@ -499,7 +527,14 @@ transcript "$T/claude-a" "$CWD" s1 <<EOF
 EOF
 echo '{"apiKey":"SECRET-APIKEY","credentials":{"password":"SECRET-PASS"},"five_hour":{"used_percentage":5,"resets_at":1},"seven_day":{"used_percentage":6,"resets_at":2},"updated_at":1,"context_window_sizes":{"m1":1000}}' > "$STATE/claude-a.json"
 echo '{"token":"SECRET-TOKEN","providers":[{"id":"codex","apiKey":"SECRET-APIKEY","meters":[{"windows":[{"ring":"session","usedPercent":7}]}]}]}' > "$T/maestri/usage/providers/.status.json"
+workspace w2 "ProjB" "$(terminal Vazado claude_code running "claude --model opus
+ANTHROPIC_API_KEY=sk-SECRET" AAAA-EXEC "$T/code/proj-b-1")" "$(terminal Longo claude_code running 'claude --model claude-opus-5-5[1m]' AAAA-EXEC "$T/code/proj-b-2")"
+session "$T/claude-a" s2 "$(roledir "$T/code/proj-b-1" AAAA-EXEC)" busy $(( NOW * 1000 ))
+session "$T/claude-a" s3 "$(roledir "$T/code/proj-b-2" AAAA-EXEC)" busy $(( NOW * 1000 ))
 out=$(snap)
+check "S8 a model that is not a name token is ?" "$(val "$(agent "$out" Vazado)" '.model')" '?'
+check "S8 a model that is a name token stays" "$(val "$(agent "$out" Longo)" '.model')" 'claude-opus-5-5[1m]'
+hasnt "S8 a secret after the model reaches no terminal line" "$(bash "$ROOT/bin/cockpit" --once 2>&1)" SECRET
 check "S8 a fixture with secret fields shows none of their values in json: the fixture produced a row" "$(val "$(agent "$out" Aracati)" '.model')" sonnet
 hasnt "S8 a fixture with secret fields shows none of their values in json" "$out" SECRET
 
@@ -548,6 +583,14 @@ check "S11 a request with Host evil.example returns 403" "$(code_of -H 'Host: ev
 check "S11 a request with Host evil.example returns 403: the page too" "$(URLPATH=/ code_of -H 'Host: evil.example')" 403
 check "S11 a request with Host evil.example returns 403: before the method" "$(code_of -X POST -H 'Host: evil.example')" 403
 check "S11 a request with Host evil.example returns 403: a lookalike" "$(code_of -H 'Host: localhost.evil.example')" 403
+check "S11 a request with a foreign Origin returns 403" "$(code_of -H 'Origin: http://evil.example')" 403
+check "S11 a request with a foreign Origin returns 403: the page too" "$(URLPATH=/ code_of -H 'Origin: http://evil.example')" 403
+check "S11 a request with a foreign Origin returns 403: a lookalike" "$(code_of -H 'Origin: http://localhost.evil.example')" 403
+check "S11 a request with a foreign Origin returns 403: a null origin" "$(code_of -H 'Origin: null')" 403
+check "S11 a request with a foreign Origin returns 403: another scheme" "$(code_of -H 'Origin: file://localhost')" 403
+for origin in "http://localhost:$PORT" "http://127.0.0.1:$PORT" http://localhost; do
+  check "S11 Origin $origin passes" "$(code_of -H "Origin: $origin")" 200
+done
 check "S11 a missing Host is rejected" "$(code_of -H 'Host:')" 403
 for host in localhost 127.0.0.1 "localhost:$PORT" "127.0.0.1:$PORT"; do
   check "S11 Host $host passes" "$(URLPATH=/ code_of -H "Host: $host")" 200
@@ -609,6 +652,33 @@ SERVE_PATH="$T/nojq" serve_start
 check "S9 a snapshot that fails returns an error status" "$(code_of)" 500
 has "S14 the page says the refresh failed" "$(page)" 'role="status">Atualização falhou'
 serve_stop
+
+snapshots_alive() { pgrep -f -- "$ROOT/bin/cockpit --json|jq -e . $STATE/stuck.json" | wc -l; }
+reset
+one_agent Aracati
+state_file claude-a "$NOW" 200000
+serve_start
+mkfifo "$STATE/stuck.json"
+started=$(date +%s)
+for _ in 1 2 3 4 5 6 7 8; do curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:$PORT/snapshot" >> "$T/burst" & done
+sleep 2
+check "S10 at most one snapshot at a time: a burst starts one collection" "$(pgrep -f "jq -e . $STATE/stuck.json" | wc -l)" 1
+check "S10 at most one snapshot at a time: the page still answers" "$(URLPATH=/ code_of)" 200
+for _ in $(seq 240); do [ "$(grep -c . "$T/burst")" = 8 ] && break; sleep 0.25; done
+check "S9 a stuck snapshot answers an error to everyone waiting" "$(sort -u "$T/burst")" 500
+check "S9 a stuck snapshot is cut within the timeout" "$(( $(date +%s) - started <= 30 ))" 1
+sleep 0.5
+check "S9 nothing of the snapshot survives the timeout" "$(snapshots_alive)" 0
+rm "$STATE/stuck.json"
+check "S9 after a stuck snapshot the next one works" "$(code_of)" 200
+mkfifo "$STATE/stuck.json"
+curl -s -o /dev/null "http://127.0.0.1:$PORT/snapshot" &
+sleep 2
+check "S9 a stuck snapshot is running before the server stops" "$(pgrep -f "jq -e . $STATE/stuck.json" | wc -l)" 1
+serve_stop
+sleep 0.5
+check "S9 nothing of the snapshot survives the server" "$(snapshots_alive)" 0
+rm "$STATE/stuck.json"
 
 check "S12 the --once output for the existing fixtures is unchanged" "$(cat "$T/once-changed")" ""
 
