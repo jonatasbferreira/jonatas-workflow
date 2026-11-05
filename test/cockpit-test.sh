@@ -674,7 +674,7 @@ check "S9 a snapshot that fails returns an error status" "$(code_of)" 500
 has "S14 the page says the refresh failed" "$(page)" 'role="status">Atualização falhou'
 serve_stop
 
-snapshots_alive() { pgrep -f -- "$ROOT/bin/cockpit --json|jq -e . $STATE/stuck.json" | wc -l; }
+snapshots_alive() { pgrep -f "jq -e . $STATE/stuck.json" | wc -l; }
 reset
 one_agent Aracati
 state_file claude-a "$NOW" 200000
@@ -683,7 +683,7 @@ mkfifo "$STATE/stuck.json"
 started=$(date +%s)
 for _ in 1 2 3 4 5 6 7 8; do curl -s -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:$PORT/snapshot" >> "$T/burst" & done
 sleep 2
-check "S10 at most one snapshot at a time: a burst starts one collection" "$(pgrep -f "jq -e . $STATE/stuck.json" | wc -l)" 1
+check "S10 at most one snapshot at a time: a burst starts one collection" "$(snapshots_alive)" 1
 check "S10 at most one snapshot at a time: the page still answers" "$(URLPATH=/ code_of)" 200
 for _ in $(seq 240); do [ "$(grep -c . "$T/burst")" = 8 ] && break; sleep 0.25; done
 check "S9 a stuck snapshot answers an error to everyone waiting" "$(sort -u "$T/burst")" 500
@@ -695,7 +695,7 @@ check "S9 after a stuck snapshot the next one works" "$(code_of)" 200
 mkfifo "$STATE/stuck.json"
 curl -s -o /dev/null "http://127.0.0.1:$PORT/snapshot" &
 sleep 2
-check "S9 a stuck snapshot is running before the server stops" "$(pgrep -f "jq -e . $STATE/stuck.json" | wc -l)" 1
+check "S9 a stuck snapshot is running before the server stops" "$(snapshots_alive)" 1
 serve_stop
 sleep 0.5
 check "S9 nothing of the snapshot survives the server" "$(snapshots_alive)" 0

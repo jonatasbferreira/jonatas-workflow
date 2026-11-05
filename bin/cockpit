@@ -424,8 +424,8 @@ snapshot() {
          seven_day: {used: (.[3] | known), resets_at: (.[4] | stamp)},
          updated_at: (.[5] | stamp), age: .[6]})),
        pending: {agents: $asking,
-         for_you: (if any($open[]; type != "number") then "?" else ($open | add // 0) end),
-         total: (if any($open[]; type != "number") then "?" else $asking + ($open | add // 0) end)},
+         for_you: (if any($open[]; . == "?") then "?" else ($open | add // 0) end),
+         total: (if any($open[]; . == "?") then "?" else $asking + ($open | add // 0) end)},
        projects: $projects}'
 }
 
