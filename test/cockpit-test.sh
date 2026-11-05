@@ -678,6 +678,51 @@ serve_start
 has "S14 the quota nearest its limit may be the 7-day one" "$(visible "$(page)")" 'Mais perto do limite 95% claude-a · 7 dias'
 serve_stop
 
+waiting_session() {
+  session "$T/claude-a" s1 "$CWD" waiting $(( NOW * 1000 ))
+  jq --arg w "$1" '.waitingFor = $w' "$T/claude-a/sessions/s1.json" > "$T/s.json" && mv "$T/s.json" "$T/claude-a/sessions/s1.json"
+}
+reset
+one_agent Aracati
+note w1 board "# board"
+waiting_session "input needed"
+out=$(snap)
+check "W1 a waiting session with waitingFor input needed and no board line is needs with esperando resposta" "$(val "$(agent "$out" Aracati)" '[.status, .status_text] | join(" ")')" 'needs esperando resposta'
+has "W1 a waiting session with waitingFor input needed and no board line shows ! in the table" "$(row "$(bash "$ROOT/bin/cockpit" --once 2>&1)" Aracati)" '^  !.*esperando resposta'
+waiting_session ""
+check "W2 the same session with an empty waitingFor gives the same result" "$(val "$(agent "$(snap)" Aracati)" '[.status, .status_text] | join(" ")')" 'needs esperando resposta'
+check "W3 the JSON counts the waiting row in pending.agents and in needs" "$(val "$(snap)" '[.pending.agents, .projects[0].agents[0].status] | join(" ")')" '1 needs'
+reset
+one_agent Aracati
+note w1 board "Aracati · #184 · implementing · sonnet · 3"
+waiting_session "input needed"
+check "W4 a slice implementing with a waiting session shows needs and the text stays implementando" "$(val "$(agent "$(snap)" Aracati)" '[.status, .status_text] | join(" ")')" 'needs implementando'
+reset
+one_agent Aracati
+note w1 board "# board"
+session "$T/claude-a" s1 "$CWD" idle $(( NOW * 1000 ))
+transcript "$T/claude-a" "$CWD" s1 <<EOF
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"q1","name":"AskUserQuestion","input":{}}]}}
+EOF
+check "W5 idle with a pending AskUserQuestion in the transcript is needs, as before" "$(val "$(agent "$(snap)" Aracati)" '[.status, .status_text] | join(" ")')" 'needs parado'
+rm "$T/claude-a/projects" -r
+check "W6 idle with nothing pending is stopped and parado, as before" "$(val "$(agent "$(snap)" Aracati)" '[.status, .status_text] | join(" ")')" 'stopped parado'
+session "$T/claude-a" s1 "$CWD" busy $(( NOW * 1000 ))
+check "W7 busy stays trabalhando" "$(val "$(agent "$(snap)" Aracati)" '[.status, .status_text] | join(" ")')" 'running trabalhando'
+session "$T/claude-a" s1 "$CWD" shell $(( NOW * 1000 ))
+check "W7 shell stays rodando comando" "$(val "$(agent "$(snap)" Aracati)" '[.status, .status_text] | join(" ")')" 'running rodando comando'
+reset
+workspace w1 "ProjA" "$(terminal Calmo claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-a-2")" "$(terminal Aracati claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-a-1")"
+note w1 board "# board"
+session "$T/claude-a" s2 "$(roledir "$T/code/proj-a-2" AAAA-EXEC)" idle $(( NOW * 1000 ))
+waiting_session "input needed"
+state_file claude-a "$NOW" 200000
+serve_start
+dom=$(page)
+has "W8 the waiting row comes first in the project" "$(grep -o '<td class="c-name">[^<]*' <<<"$dom" | head -1)" 'Aracati'
+has "W8 the waiting row is hot on the page" "$(grep -o '<tr class="[a-z]*"><td class="c-mark"><span class="mark needs">!' <<<"$dom")" 'hot'
+serve_stop
+
 mkdir -p "$T/nojq"
 for tool in bash python3 dirname readlink date; do ln -s "$(command -v "$tool")" "$T/nojq/$tool"; done
 SERVE_PATH="$T/nojq" serve_start

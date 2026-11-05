@@ -306,7 +306,9 @@ agent_row() {
       [-?]/busy) tstate='trabalhando' ;;
       [-?]/idle) tstate='parado' ;;
       [-?]/shell) tstate='rodando comando' ;;
+      [-?]/waiting) tstate='esperando resposta' ;;
     esac
+    [ "$status" = waiting ] && star='!'
     tr="$dir/projects/$(sed 's/[^A-Za-z0-9]/-/g' <<<"$cwd")/$sid.jsonl"
     if [ -f "$tr" ]; then
       tokens=$(context_tokens "$tr")
