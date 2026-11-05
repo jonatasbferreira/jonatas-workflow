@@ -15,6 +15,7 @@ PAGE = BIN.parent / "templates" / "cockpit.html"
 SNAPSHOT_SECONDS = 20
 HOST = re.compile(r"(localhost|127\.0\.0\.1)(:[0-9]+)?")
 ORIGIN = re.compile(r"https?://(localhost|127\.0\.0\.1)(:[0-9]+)?")
+FOREIGN_SITES = {"cross-site", "same-site"}
 
 
 class Snapshots:
@@ -69,7 +70,9 @@ class Cockpit(BaseHTTPRequestHandler):
             return False
         hosts = self.headers.get_all("Host") or []
         origins = self.headers.get_all("Origin") or []
-        if len(hosts) != 1 or not HOST.fullmatch(hosts[0]) or not all(ORIGIN.fullmatch(origin) for origin in origins):
+        sites = self.headers.get_all("Sec-Fetch-Site") or []
+        foreign = FOREIGN_SITES.intersection(site.strip().lower() for site in sites)
+        if len(hosts) != 1 or not HOST.fullmatch(hosts[0]) or not all(ORIGIN.fullmatch(origin) for origin in origins) or foreign:
             self.send_error(403)
             return False
         return True

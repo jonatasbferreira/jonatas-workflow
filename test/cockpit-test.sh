@@ -612,6 +612,14 @@ check "S11 a request with a foreign Origin returns 403: another scheme" "$(code_
 for origin in "http://localhost:$PORT" "http://127.0.0.1:$PORT" http://localhost; do
   check "S11 Origin $origin passes" "$(code_of -H "Origin: $origin")" 200
 done
+for site in cross-site same-site; do
+  check "S11 Sec-Fetch-Site $site returns 403" "$(code_of -H "Sec-Fetch-Site: $site")" 403
+  check "S11 Sec-Fetch-Site $site returns 403: the page too" "$(URLPATH=/ code_of -H "Sec-Fetch-Site: $site")" 403
+done
+for site in same-origin none; do
+  check "S11 Sec-Fetch-Site $site passes" "$(code_of -H "Sec-Fetch-Site: $site")" 200
+done
+check "S11 a missing Sec-Fetch-Site passes" "$(code_of)" 200
 check "S11 a missing Host is rejected" "$(code_of -H 'Host:')" 403
 for host in localhost 127.0.0.1 "localhost:$PORT" "127.0.0.1:$PORT"; do
   check "S11 Host $host passes" "$(URLPATH=/ code_of -H "Host: $host")" 200
