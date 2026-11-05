@@ -7,6 +7,8 @@ T=$(mktemp -d); SRV=''; trap '[ -z "$SRV" ] || kill "$SRV" 2>/dev/null; rm -rf "
 export MAESTRI_DATA_DIR="$T/maestri"
 export XDG_STATE_HOME="$T/state"
 export COCKPIT_CLAUDE_DIRS="$T/claude-a:$T/claude-b"
+export COCKPIT_PROC_DIR="$T/no-proc"
+export COCKPIT_CODEX_DIR="$T/codex/sessions"
 unset CLAUDE_CONFIG_DIR
 unset COLUMNS
 STATE="$XDG_STATE_HOME/jonatas-workflow/cockpit"
@@ -19,7 +21,8 @@ hasnt() { if printf '%s' "$2" | grep -q -- "$3"; then echo "FAIL  $1: '$3' found
 row() { printf '%s\n' "$1" | grep -- "$2" | head -1; }
 
 reset() {
-  rm -rf "$T/maestri" "$T/state" "$T/claude-a" "$T/claude-b"
+  rm -rf "$T/maestri" "$T/state" "$T/claude-a" "$T/claude-b" "$T/claude-c" "$T/proc" "$T/codex"
+  mkdir -p "$T/proc" "$T/codex/sessions"
   mkdir -p "$T/maestri/workspaces" "$T/maestri/usage/providers" "$T/claude-a/sessions" "$T/claude-b/sessions" "$STATE"
   cat > "$T/maestri/preferences.json" <<'EOF'
 {"payload":{"rolePresets":[
@@ -30,8 +33,8 @@ EOF
 }
 
 terminal() {
-  jq -n --arg name "$1" --arg type "$2" --arg status "$3" --arg cmd "$4" --arg role "$5" --arg wd "$6" \
-    '{content:{terminal:{_0:{name:$name,agentType:$type,status:$status,command:$cmd,assignedRoleId:$role,workingDirectory:$wd,apiKey:"SECRET-APIKEY",token:"SECRET-TOKEN"}}}}'
+  jq -n --arg name "$1" --arg type "$2" --arg status "$3" --arg cmd "$4" --arg role "$5" --arg wd "$6" --arg id "${7:-}" \
+    '{content:{terminal:{_0:{id:$id,name:$name,agentType:$type,status:$status,command:$cmd,assignedRoleId:$role,workingDirectory:$wd,apiKey:"SECRET-APIKEY",token:"SECRET-TOKEN"}}}}'
 }
 
 workspace() {
@@ -708,6 +711,188 @@ serve_stop
 sleep 0.5
 check "S9 nothing of the snapshot survives the server" "$(snapshots_alive)" 0
 rm "$STATE/stuck.json"
+
+PROC=$T/proc
+CODEX=$T/codex/sessions
+proc() { mkdir -p "$PROC/$1"; printf 'HOME=/x\0MAESTRI_TERMINAL_ID=%s\0PATH=/bin\0' "$2" > "$PROC/$1/environ"; printf '%s\n' "$3" > "$PROC/$1/comm"; }
+rollout() {
+  local f="$CODEX/2026/11/05/rollout-$1.jsonl"
+  mkdir -p "$(dirname "$f")"
+  {
+    jq -nc --arg c "$2" --arg t "${7:-user}" '{type:"session_meta",payload:{cwd:$c,thread_source:$t}}'
+    jq -nc --arg c "$2" --arg m "$3" '{type:"turn_context",payload:{cwd:$c,model:$m}}'
+    [ -z "$4" ] || jq -nc --argjson i "$4" --argjson w "$5" '{type:"event_msg",payload:{type:"token_count",info:{last_token_usage:{input_tokens:$i},model_context_window:$w}}}'
+  } > "$f"
+  touch -d "@$6" "$f"
+}
+cdx_fields() { val "$(agent "$1" "$2")" '[.model, .context, .since] | join(" ")'; }
+sum_all() { find "$T/maestri" "$T/claude-a" "$T/claude-b" "$T/state" "$PROC" "$T/codex" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum; }
+export COCKPIT_PROC_DIR="$PROC"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+proc 100 T1 codex
+rollout r1 "$T/code/proj-b" gpt-6.1-sol 79229 475000 $((NOW - 7200))
+check "P1 a codex terminal marked stopped with a live process gets a row with model, context and time" "$(cdx_fields "$(snap)" Cdx)" "gpt-6.1-sol 17 2h"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex running codex '' "$T/code/proj-b" T2)" "$(terminal Outro codex running codex '' "$T/code/proj-c" T9)"
+proc 100 T9 codex
+check "P2 a codex terminal marked running with no live process gets no row" "$(agent "$(snap)" Cdx)" ""
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T3)"
+proc 100 T3 zsh
+check "P3 a live shell carrying the terminal id does not make it live" "$(agent "$(snap)" Cdx)" ""
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T3)"
+proc 100 T3 zsh
+proc 101 T3 codex-code-mode
+check "P3 a codex-code-mode helper carrying the terminal id does not make it live" "$(agent "$(snap)" Cdx)" ""
+
+reset
+workspace w1 "ProjA" "$(terminal Cus custom stopped 'zsh -l' '' "$T/code/proj-b" T3)"
+proc 100 T3 zsh
+check "P3 a shell does not count even as the terminal's own command" "$(agent "$(snap)" Cus)" ""
+
+reset
+mkdir -p "$T/claude-c/sessions"
+workspace w1 "ProjA" "$(terminal Cus custom stopped "env CLAUDE_CONFIG_DIR=$T/claude-c claude --model sonnet" '' "$T/code/proj-c" T4)"
+proc 100 T4 claude
+session "$T/claude-c" s1 "$T/code/proj-c" busy $(( NOW * 1000 ))
+transcript "$T/claude-c" "$T/code/proj-c" s1 <<EOF
+$(usage_line 2 1000 99000)
+EOF
+state_file claude-c "$NOW" 200000
+check "P4 a custom terminal running claude gets the session data from the CLAUDE_CONFIG_DIR of its command" \
+  "$(val "$(agent "$(snap)" Cus)" '[.model, .context, .status_text] | join(" ")')" "sonnet 50 trabalhando"
+
+reset
+workspace w1 "ProjA" "$(terminal Aracati claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-a-1" T5)"
+proc 100 T5 claude
+session "$T/claude-a" s1 "$CWD" busy $(( (NOW - 7200) * 1000 ))
+transcript "$T/claude-a" "$CWD" s1 <<EOF
+$(usage_line 2 1000 99000)
+EOF
+state_file claude-a "$NOW" 200000
+out=$(run)
+has "P5 a claude terminal prints the row it printed before" "$(row "$out" Aracati)" 'Aracati.*sonnet.*2h.*50%'
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+proc 100 T1 codex
+rollout a-new "$T/code/proj-b" new-model 100 1000 $((NOW - 60))
+rollout z-old "$T/code/proj-b" old-model 100 1000 $((NOW - 7200))
+check "P6 of two rollouts of one directory the newest by modification time counts" "$(cdx_fields "$(snap)" Cdx)" "new-model 10 1m"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+proc 100 T1 codex
+rollout r1 "$T/code/elsewhere" gpt-x 100 1000 $((NOW - 60))
+check "P7 a rollout of another directory is not used" "$(cdx_fields "$(snap)" Cdx)" "? ? ?"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+proc 100 T1 codex
+rollout r1 "$T/code/proj-b" gpt-x '' '' $((NOW - 60))
+check "P8 a rollout with no token_count shows ? for the context" "$(val "$(agent "$(snap)" Cdx)" '.context')" "?"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+proc 100 T1 codex
+check "P9 with no rollout at all the row exists with ?" "$(cdx_fields "$(snap)" Cdx)" "? ? ?"
+
+reset
+WS=$T/code/proj
+WS_DIR=$WS workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' '' T1)"
+proc 100 T1 codex
+rollout r1 "$WS" gpt-x 100 1000 $((NOW - 60))
+check "P10 a codex terminal with no directory matches through the workspace's" "$(val "$(agent "$(snap)" Cdx)" '.context')" "10"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex running codex '' "$T/code/proj-b" T1)" "$(terminal Parado codex stopped codex '' "$T/code/proj-c" T2)"
+proc 100 T1 codex
+proc 101 T2 codex
+chmod 000 "$PROC"/*/environ
+out=$(snap); code=$?
+check "P11 an unreadable /proc keeps today's selection and exit code 0" "$code $(val "$out" '[.projects[].agents[].name] | join(",")')" "0 Cdx"
+chmod 644 "$PROC"/*/environ
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+proc 100 T1 codex
+rollout r1 "$T/code/proj-b" gpt-x 100 1000 $((NOW - 60))
+echo '{"OPENAI_API_KEY":"SECRET-OPENAI","tokens":{"access_token":"SECRET-ACCESS"}}' | tee "$T/codex/auth.json" "$CODEX/auth.json" "$CODEX/2026/11/05/auth.json" >/dev/null
+check "P12 the fixture produced a row" "$(val "$(agent "$(snap)" Cdx)" '.model')" "gpt-x"
+hasnt "P12 an auth.json with a secret leaves no value in the output" "$(snap; bash "$ROOT/bin/cockpit" --once 2>&1)" SECRET
+
+before=$(sum_all); snap >/dev/null; bash "$ROOT/bin/cockpit" --once >/dev/null 2>&1; after=$(sum_all)
+check "P13 the checksum of the test directories is unchanged after a round" "$after" "$before"
+
+reset
+WS=$T/code/proj
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex AAAA-EXEC "$WS" T1)"
+proc 100 T1 codex
+rollout wrong "$WS" wrong-model 100 1000 $((NOW - 60))
+rollout right "$(roledir "$WS" AAAA-EXEC)" right-model 100 1000 $((NOW - 600))
+check "P15 a codex terminal with a role matches through the role's directory" "$(val "$(agent "$(snap)" Cdx)" '.model')" "right-model"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+note w1 board "Cdx · #184 · merged PR #187 · gpt · 3"
+note w1 "for you" "# for you"
+proc 100 T1 codex
+rollout r1 "$T/code/proj-b" gpt-x 100 1000 $((NOW - 60))
+out=$(snap)
+check "P16 a codex agent with a merged board line is done and not counted as needing Jonatas" "$(val "$(agent "$out" Cdx)" '.status') $(val "$out" '.pending.total')" "done 0"
+
+reset
+workspace w1 "ProjA" "$(terminal Cus custom stopped 'env FOO=1 mytool --flag' '' "$T/code/proj-b" T1)"
+proc 100 T1 mytool
+check "P17 a custom terminal whose process carries the name of its own command gets a row with ?" "$(cdx_fields "$(snap)" Cus)" "? ? ?"
+
+reset
+workspace w1 "ProjA" "$(terminal Cus custom stopped 'a-very-long-command-name' '' "$T/code/proj-b" T1)"
+proc 100 T1 a-very-long-com
+check "P17 the own command word is cut to 15 characters as comm is" "$(cdx_fields "$(snap)" Cus)" "? ? ?"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+proc 100 T1 codex
+rollout user "$T/code/proj-b" user-model 100 1000 $((NOW - 600))
+rollout guardian "$T/code/proj-b" codex-auto-review 100 1000 $((NOW - 60)) guardian_review
+check "P18 a rollout with thread_source guardian_review is not used even when it is the newest" "$(val "$(agent "$(snap)" Cdx)" '.model')" "user-model"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b/" T1)"
+proc 100 T1 codex
+rollout r1 "$T/code/proj-b" gpt-x 100 1000 $((NOW - 60))
+check "P19 a codex terminal with a trailing slash in its directory matches the rollout" "$(val "$(agent "$(snap)" Cdx)" '.model')" "gpt-x"
+
+reset
+workspace w1 "ProjA" "$(terminal Cus custom stopped 'claude --model sonnet' '' "$T/code/proj-c/" T1)"
+proc 100 T1 claude
+session "$T/claude-a" s1 "$T/code/proj-c" busy $(( NOW * 1000 ))
+check "P19 a claude terminal with a trailing slash in its directory matches the session" "$(val "$(agent "$(snap)" Cus)" '.status_text')" "trabalhando"
+
+for order in "100 claude 101 codex" "100 codex 101 claude"; do
+  set -- $order
+  reset
+  workspace w1 "ProjA" "$(terminal Aracati claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-a-1" T1)"
+  proc "$1" T1 "$2"; proc "$3" T1 "$4"
+  session "$T/claude-a" s1 "$CWD" busy $(( NOW * 1000 ))
+  rollout r1 "$CWD" gpt-x 100 1000 $((NOW - 60))
+  check "P20 a claude terminal with a codex child keeps the session data ($order)" "$(val "$(agent "$(snap)" Aracati)" '[.model, .status_text] | join(" ")')" "sonnet trabalhando"
+
+  reset
+  workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+  proc "$1" T1 "$2"; proc "$3" T1 "$4"
+  session "$T/claude-a" s1 "$T/code/proj-b" busy $(( NOW * 1000 ))
+  rollout r1 "$T/code/proj-b" gpt-x 100 1000 $((NOW - 60))
+  check "P20 a codex terminal with a claude child keeps the rollout data ($order)" "$(val "$(agent "$(snap)" Cdx)" '[.model, .context] | join(" ")')" "gpt-x 10"
+done
+export COCKPIT_PROC_DIR="$T/no-proc"
 
 check "S12 the --once output for the existing fixtures is unchanged" "$(cat "$T/once-changed")" ""
 
