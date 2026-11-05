@@ -719,7 +719,7 @@ rollout() {
   local f="$CODEX/2026/11/05/rollout-$1.jsonl"
   mkdir -p "$(dirname "$f")"
   {
-    jq -nc --arg c "$2" '{type:"session_meta",payload:{cwd:$c}}'
+    jq -nc --arg c "$2" --arg t "${7:-user}" '{type:"session_meta",payload:{cwd:$c,thread_source:$t}}'
     jq -nc --arg c "$2" --arg m "$3" '{type:"turn_context",payload:{cwd:$c,model:$m}}'
     [ -z "$4" ] || jq -nc --argjson i "$4" --argjson w "$5" '{type:"event_msg",payload:{type:"token_count",info:{last_token_usage:{input_tokens:$i},model_context_window:$w}}}'
   } > "$f"
@@ -856,6 +856,42 @@ reset
 workspace w1 "ProjA" "$(terminal Cus custom stopped 'a-very-long-command-name' '' "$T/code/proj-b" T1)"
 proc 100 T1 a-very-long-com
 check "P17 the own command word is cut to 15 characters as comm is" "$(cdx_fields "$(snap)" Cus)" "? ? ?"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+proc 100 T1 codex
+rollout user "$T/code/proj-b" user-model 100 1000 $((NOW - 600))
+rollout guardian "$T/code/proj-b" codex-auto-review 100 1000 $((NOW - 60)) guardian_review
+check "P18 a rollout with thread_source guardian_review is not used even when it is the newest" "$(val "$(agent "$(snap)" Cdx)" '.model')" "user-model"
+
+reset
+workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b/" T1)"
+proc 100 T1 codex
+rollout r1 "$T/code/proj-b" gpt-x 100 1000 $((NOW - 60))
+check "P19 a codex terminal with a trailing slash in its directory matches the rollout" "$(val "$(agent "$(snap)" Cdx)" '.model')" "gpt-x"
+
+reset
+workspace w1 "ProjA" "$(terminal Cus custom stopped 'claude --model sonnet' '' "$T/code/proj-c/" T1)"
+proc 100 T1 claude
+session "$T/claude-a" s1 "$T/code/proj-c" busy $(( NOW * 1000 ))
+check "P19 a claude terminal with a trailing slash in its directory matches the session" "$(val "$(agent "$(snap)" Cus)" '.status_text')" "trabalhando"
+
+for order in "100 claude 101 codex" "100 codex 101 claude"; do
+  set -- $order
+  reset
+  workspace w1 "ProjA" "$(terminal Aracati claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-a-1" T1)"
+  proc "$1" T1 "$2"; proc "$3" T1 "$4"
+  session "$T/claude-a" s1 "$CWD" busy $(( NOW * 1000 ))
+  rollout r1 "$CWD" gpt-x 100 1000 $((NOW - 60))
+  check "P20 a claude terminal with a codex child keeps the session data ($order)" "$(val "$(agent "$(snap)" Aracati)" '[.model, .status_text] | join(" ")')" "sonnet trabalhando"
+
+  reset
+  workspace w1 "ProjA" "$(terminal Cdx codex stopped codex '' "$T/code/proj-b" T1)"
+  proc "$1" T1 "$2"; proc "$3" T1 "$4"
+  session "$T/claude-a" s1 "$T/code/proj-b" busy $(( NOW * 1000 ))
+  rollout r1 "$T/code/proj-b" gpt-x 100 1000 $((NOW - 60))
+  check "P20 a codex terminal with a claude child keeps the rollout data ($order)" "$(val "$(agent "$(snap)" Cdx)" '[.model, .context] | join(" ")')" "gpt-x 10"
+done
 export COCKPIT_PROC_DIR="$T/no-proc"
 
 check "S12 the --once output for the existing fixtures is unchanged" "$(cat "$T/once-changed")" ""

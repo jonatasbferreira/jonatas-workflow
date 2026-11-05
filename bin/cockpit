@@ -164,7 +164,7 @@ find_session() {
 find_rollout() {
   local f
   while IFS= read -r f; do
-    [ "$(head -n 1 "$f" | jq -r 'select(.type == "session_meta") | .payload.cwd // empty' 2>/dev/null)" = "$1" ] && { echo "$f"; return; }
+    [ "$(head -n 1 "$f" | jq -r 'select(.type == "session_meta" and (.payload.thread_source // "user") == "user") | .payload.cwd // empty' 2>/dev/null)" = "$1" ] && { echo "$f"; return; }
   done < <(find "$codex_dir" -name 'rollout-*.jsonl' -type f -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-)
 }
 
@@ -200,14 +200,16 @@ command_word() {
 }
 
 agent_kind() {
-  local own comm kind=''
+  local own comm kind='' want=''
   own=$(command_word "$2")
+  case "$3" in claude_code) want=claude ;; codex) want=codex ;; esac
   while IFS= read -r comm; do
     case "$comm" in
       '') ;;
-      claude|codex) echo "$comm"; return ;;
+      "$want") echo "$comm"; return ;;
+      claude|codex) kind=${kind:-$comm} ;;
       sh|bash|zsh|dash|fish) ;;
-      "$own") kind=other ;;
+      "$own") kind=${kind:-other} ;;
     esac
   done <<<"${procs[$1]:-}"
   echo "$kind"
@@ -368,11 +370,12 @@ rows() {
     local project name type cmd role wd status id cwd found rollout kind
     while IFS=$'\t' read -r project name type cmd role wd status id; do
       [ -n "$name" ] || continue
+      wd=${wd%/}
       cwd=$wd
       [ "$role" = - ] || cwd="$wd/.maestri/roles/$(tr 'A-Z' 'a-z' <<<"$role")"
       found=''; rollout=''
       if [ "$mapped" = yes ]; then
-        kind=$(agent_kind "$id" "$cmd")
+        kind=$(agent_kind "$id" "$cmd" "$type")
         [ -n "$kind" ] || continue
         case "$kind/$type" in
           claude/claude_code|claude/custom) found=$(find_session "$cwd" "$(sed -n 's/.*CLAUDE_CONFIG_DIR=\([^ ]*\).*/\1/p' <<<"$cmd" | head -1)") ;;
