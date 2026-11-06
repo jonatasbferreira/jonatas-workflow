@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="pt-BR">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTÓTIPO · Cockpit</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0b1017; --panel: #101722; --row: #151e2b; --line: #263244; --fg: #dbe3ee; --dim: #8693a6;
+  --accent: #78a9f5; --ok: #57d68d; --warn: #f2c14e; --crit: #f26d6d; --ctx: #a78bfa; --track: #243042;
+  --hot: rgba(242, 193, 78, .13);
+  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.45 var(--mono); font-variant-numeric: tabular-nums; }
+.page { max-width: 1640px; margin: 0 auto; padding-block: 14px 24px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 12px; }
+header { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.brand { background: var(--accent); color: #0b1017; font-weight: 700; padding: 3px 12px; border-radius: 5px; letter-spacing: .06em; }
+.sub { color: var(--dim); min-width: 0; }
+.fail { color: var(--crit); border: 1px solid var(--crit); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
+.clock { margin-left: auto; border: 1px solid var(--line); border-radius: 5px; padding: 2px 10px; }
+.tiles { display: flex; flex-wrap: wrap; gap: 12px; }
+.tiles .tile { flex: 1 1 190px; box-sizing: border-box; }
+.tile, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; min-width: 0; }
+.tile { padding: 10px 14px; display: grid; gap: 2px; }
+.tile.alert { border-color: var(--warn); }
+.tile b { font-size: 21px; font-weight: 700; line-height: 1.25; }
+.tile small, .note { color: var(--dim); font-size: 12px; }
+.label { color: var(--dim); font-size: 12px; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: auto auto 1fr; gap: 12px; grid-template-areas: "quotas attention" "projects filters" "projects legend"; }
+.quotas { grid-area: quotas; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.attention { grid-area: attention; } .projects { grid-area: projects; } .filter-panel { grid-area: filters; } .legend-panel { grid-area: legend; align-self: start; }
+.stack { display: grid; gap: 12px; min-width: 0; }
+.panel { padding: 11px 14px; }
+h2 { margin: 0 0 9px; font-size: 14px; font-weight: 500; text-wrap: balance; }
+h2 span { color: var(--dim); font-weight: 400; }
+.quota { display: grid; grid-template-columns: 118px minmax(30px, 1fr) 38px 132px; gap: 9px; align-items: center; padding: 3px 0; }
+.quota .pct { text-align: right; font-weight: 500; }
+.quota .when { color: var(--dim); font-size: 12px; text-align: right; }
+.quota span:first-child { overflow-wrap: anywhere; }
+.bar { height: 9px; background: var(--track); border-radius: 2px; overflow: hidden; display: block; }
+.bar i { display: block; height: 100%; }
+.project-head { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+.project-head h2 { margin: 0; color: var(--accent); font-weight: 700; }
+table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+th { text-align: left; color: var(--dim); font-weight: 400; font-size: 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th, td { box-sizing: border-box; padding: 5px 6px; }
+td { border-bottom: 1px solid var(--row); overflow-wrap: anywhere; }
+.c-mark { width: 26px; } .c-name { width: 116px; } .c-model { width: 62px; } .c-task { width: 110px; } .c-pts { width: 38px; } .c-time { width: 50px; } .c-ctx { width: 132px; } .c-done { width: 196px; }
+tr:last-child td { border-bottom: 0; }
+tr.hot { background: var(--hot); }
+td.c-name { font-weight: 700; }
+td.c-model { color: var(--accent); }
+.c-time { text-align: right; }
+.mark { display: inline-block; width: 1.2em; text-align: center; font-weight: 700; }
+.running { color: var(--ok); } .review { color: var(--warn); } .stopped { color: var(--dim); } .done { color: var(--ok); } .blocked { color: var(--crit); } .needs { color: var(--warn); } .unknown { color: var(--dim); }
+.ctx { display: grid; grid-template-columns: minmax(0, 1fr) 36px; gap: 6px; align-items: center; }
+.ctx span:last-child { text-align: right; }
+.steps { display: inline-flex; gap: 2px; vertical-align: middle; margin-right: 8px; }
+.steps i { width: 10px; height: 9px; background: var(--track); border-radius: 1px; }
+.steps i.on { background: var(--ok); }
+.steps-text { color: var(--dim); font-size: 12px; }
+.attn { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px 16px; }
+.attn li { display: grid; grid-template-columns: 1.3em 1fr; gap: 4px 6px; }
+.attn small { grid-column: 2; color: var(--dim); font-size: 12px; }
+.filters { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+button { font: inherit; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; text-align: left; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.legend { display: grid; gap: 3px; font-size: 12px; color: var(--dim); }
+.empty { color: var(--dim); padding: 8px; }
+@media (max-width: 1240px) {
+  .main { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "quotas" "attention" "filters" "projects" "legend"; }
+  .tile { padding: 8px 11px; } .tile b { font-size: 18px; } .tile small { font-size: 11.5px; line-height: 1.35; }
+  .attn { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .filter-panel { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding-block: 7px; }
+  .filter-panel h2 { margin: 0; }
+  .filters { display: flex; flex-wrap: wrap; }
+  .legend-panel { padding-block: 7px; }
+  .legend-panel h2 { display: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 3px 16px; }
+}
+@media (max-width: 900px) {
+  .quotas { grid-template-columns: minmax(0, 1fr); }
+  thead { display: none; }
+  table, tbody { display: block; }
+  tr { display: grid; grid-template-columns: 20px minmax(0, 1fr) 64px 108px 44px; gap: 2px 10px; padding: 6px 4px; border-bottom: 1px solid var(--row); grid-template-areas: "mark name model task time" ". status status status pts" ". ctx done done done"; }
+  tr:last-child { border-bottom: 0; }
+  td, tr:last-child td { display: block; padding: 0; border: 0; width: auto; }
+  td.c-mark { grid-area: mark; } td.c-name { grid-area: name; } td.c-model { grid-area: model; } td.c-task { grid-area: task; } td.c-pts { grid-area: pts; text-align: right; white-space: nowrap; } td.c-status { grid-area: status; } td.c-time { grid-area: time; } td.c-ctx { grid-area: ctx; } td.c-done { grid-area: done; }
+  td.c-pts:not(:empty)::after { content: " pts"; color: var(--dim); }
+  td.c-ctx::before { content: "contexto"; color: var(--dim); font-size: 12px; margin-right: 8px; }
+  td.c-ctx { display: flex; align-items: center; min-width: 0; } .ctx { flex: 1; min-width: 0; }
+}
+@media (max-width: 560px) {
+  .tiles .tile { flex-basis: 150px; }
+  .quota { grid-template-columns: 1fr 42px; } .quota .bar { grid-column: 1 / -1; grid-row: 2; } .quota .when { grid-column: 1 / -1; text-align: left; }
+  tr { grid-template-columns: 20px minmax(0, 1fr) 64px 44px; grid-template-areas: "mark name model time" ". task task pts" ". status status status" ". ctx ctx ctx" ". done done done"; }
+}
+.rodada { margin-top: 12px; }
+.page { padding-bottom: 130px; }
+.rodada-head { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; justify-content: space-between; }
+.rodada-head h2 { margin: 0; color: var(--accent); font-weight: 700; }
+.junto { color: var(--ok); font-weight: 700; }
+.junto.um { color: var(--fg); font-weight: 500; }
+.junto.zero { color: var(--dim); font-weight: 400; }
+.manifesto { color: var(--dim); font-size: 12px; margin: 3px 0 11px; }
+.card { background: var(--row); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 5px; padding: 7px 9px; display: grid; gap: 4px; min-width: 0; }
+.card header { display: flex; flex-wrap: wrap; gap: 0 8px; justify-content: space-between; align-items: baseline; padding: 0; border: 0; }
+.card header b { color: var(--accent); }
+.card header span { color: var(--dim); font-size: 12px; }
+.card p { margin: 0; font-size: 12.5px; line-height: 1.4; }
+.card footer { color: var(--dim); font-size: 12px; }
+.card.s-rodando { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok); }
+.card.s-rodando footer { color: var(--ok); }
+.card.s-pr { border-left-color: var(--warn); }
+.card.s-pr footer { color: var(--warn); }
+.card.s-espera { border-style: dashed; border-left-style: solid; border-left-color: var(--crit); }
+.card.s-espera footer { color: var(--crit); }
+.card.s-merge { opacity: .62; border-left-color: var(--ok); }
+.colunas { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.coluna { min-width: 0; display: grid; gap: 7px; align-content: start; }
+.coluna h3 { margin: 0; font-size: 12px; font-weight: 400; color: var(--dim); border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+.coluna.rodando h3 { color: var(--ok); border-color: var(--ok); }
+.coluna .vazio { color: var(--track); font-size: 12px; }
+.grafo { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 56px; align-items: center; }
+.grafo svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.grafo path { fill: none; stroke: var(--dim); stroke-width: 1.5; stroke-dasharray: 5 4; }
+.grafo path.livre { stroke: var(--ok); stroke-dasharray: none; opacity: .55; }
+.grafo .card { position: relative; background: var(--row); }
+.grafo-nota { color: var(--dim); font-size: 12px; margin-top: 10px; }
+.crono { display: grid; grid-template-columns: minmax(0, 38%) minmax(0, 1fr); column-gap: 14px; }
+.crono-eixo { position: relative; height: 22px; font-size: 12px; color: var(--dim); }
+.crono-eixo span { position: absolute; transform: translateX(-50%); top: 2px; }
+.crono-eixo em { position: absolute; top: 2px; font-style: normal; color: var(--ok); font-size: 11.5px; transform: translateX(-50%); white-space: nowrap; }
+.crono-info { padding: 6px 0; border-top: 1px solid var(--row); min-width: 0; }
+.crono-info b { color: var(--accent); }
+.crono-info span { color: var(--dim); font-size: 12px; margin-left: 6px; }
+.crono-info p { margin: 2px 0 0; font-size: 12px; line-height: 1.35; }
+.crono-trilha { position: relative; border-top: 1px solid var(--row); min-height: 44px; }
+.crono-trilha i { position: absolute; display: block; }
+.faixa { top: 0; bottom: 0; background: rgba(87, 214, 141, .1); }
+.fila-linha { top: 50%; height: 0; border-top: 1px dashed var(--dim); }
+.barra { top: calc(50% - 7px); height: 14px; background: var(--ok); border-radius: 2px; }
+.barra.pr { background: repeating-linear-gradient(45deg, var(--warn) 0 4px, rgba(242, 193, 78, .35) 4px 8px); }
+.agora { top: 0; bottom: 0; width: 1px; background: var(--accent); }
+.crono-legenda { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 3px 16px; color: var(--dim); font-size: 12px; margin-top: 9px; }
+.crono-legenda u { display: inline-block; width: 22px; height: 9px; margin-right: 6px; text-decoration: none; vertical-align: middle; border-radius: 2px; }
+.proto { position: fixed; z-index: 10; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(620px, calc(100vw - 24px)); box-sizing: border-box; background: #f4f6fb; color: #0b1017; border-radius: 12px; padding: 8px 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, .6); display: grid; gap: 6px; }
+.proto-linha { display: flex; align-items: center; gap: 8px; }
+.proto small { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #6a3fd0; }
+.proto strong { flex: 1; text-align: center; font-size: 13px; }
+.proto button { color: #0b1017; border-color: #8693a6; padding: 2px 11px; text-align: center; min-height: 28px; }
+.proto button:hover { border-color: #0b1017; }
+.proto input { flex: 1; min-width: 0; accent-color: #6a3fd0; }
+.proto output { font-size: 13px; font-weight: 700; min-width: 44px; text-align: right; }
+@media (max-width: 1100px) {
+  .colunas { grid-template-columns: minmax(0, 1fr); }
+  .coluna .vazio { display: none; }
+  .coluna:has(.vazio) { display: none; }
+  .crono { grid-template-columns: minmax(0, 1fr); }
+  .crono-eixo.topo-vazio { display: none; }
+  .crono-info { border-top: 1px solid var(--line); padding-bottom: 2px; }
+  .crono-trilha { border-top: 0; min-height: 28px; }
+}
+@media (max-width: 760px) {
+  .grafo { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .grafo svg { display: none; }
+  .grafo .card { grid-column: 1 !important; grid-row: auto !important; }
+  .grafo .card[data-nivel="1"] { margin-left: 18px; }
+  .grafo .card[data-nivel="2"] { margin-left: 36px; }
+}
+</style>
+
+<div class="page">
+  <header>
+    <span class="brand">COCKPIT</span>
+    <span class="sub">Agentes de IA · Validação e acompanhamento</span>
+    <span class="fail" id="fail" role="status" hidden></span>
+    <span class="clock" id="clock">?</span>
+  </header>
+  <section class="tiles" id="tiles"></section>
+  <section class="panel rodada">
+    <div class="rodada-head"><h2>Rodada <span>· APP FINANCEIRO · 06/11</span></h2><span class="junto" id="junto"></span></div>
+    <div class="manifesto">Manifesto: 1. #238 Primeiros passos: o dono novo conecta tudo sem ajuda (pai, 5 folhas) · 2. #248 O app se chama Niney em todas as telas (folha)</div>
+    <div id="rodada-corpo"></div>
+  </section>
+  <div class="main">
+    <div class="quotas" id="quotas"></div>
+    <section class="panel attention"><h2>Atenção</h2><ul class="attn" id="attention"></ul></section>
+    <div class="stack projects" id="projects"></div>
+    <section class="panel filter-panel"><h2>Filtros</h2><div class="filters" id="filters"></div></section>
+    <section class="panel legend-panel"><h2>Legenda</h2>
+        <div class="legend">
+          <span><span class="mark running">●</span> Rodando agora</span>
+          <span><span class="mark review">◐</span> Revisando</span>
+          <span><span class="mark stopped">○</span> Parado</span>
+          <span><span class="mark blocked">■</span> Bloqueado por outro ticket</span>
+          <span><span class="mark done">✓</span> Concluído</span>
+          <span><span class="mark needs">!</span> Precisa de você</span>
+          <span><span class="mark unknown">?</span> Desconhecido</span>
+          <span>Cota: limite da conta de IA</span>
+          <span>Contexto: memória usada pelo agente</span>
+          <span>Conclusão: etapa do ticket no board</span>
+        </div>
+      </section>
+  </div>
+</div>
+
+<script>
+const BASE = {"generated_at": 1793988292, "limits": [{"account": "claude-personal", "five_hour": {"used": 7, "resets_at": 1793998800}, "seven_day": {"used": 80, "resets_at": 1794103200}, "updated_at": 1793988287, "age": "5s"}, {"account": "claude", "five_hour": {"used": 5, "resets_at": 1793861400}, "seven_day": {"used": 18, "resets_at": 1794348000}, "updated_at": 1793987451, "age": "14m"}, {"account": "codex", "five_hour": {"used": 0, "resets_at": 1794005508}, "seven_day": {"used": 0, "resets_at": 1794592308}, "updated_at": 1793987508, "age": "13m"}]};
+const TICKETS = [
+  { n: 239, pai: 238, nome: 'Carnauba', modelo: 'sonnet', pts: 2, inicio: '09:41', pr: '09:44', fim: '09:56', num: 243, deps: [], nivel: 0, lin: 1,
+    rule: 'Um endereço com a seção no fragmento abre a Configuração nessa seção, mesmo quando o dono precisa entrar primeiro.' },
+  { n: 236, pai: 238, nome: 'Mandacaru', modelo: 'opus', pts: 3, inicio: '09:41', pr: '10:14', fim: '10:43', num: 245, deps: [], nivel: 0, lin: 2,
+    rule: 'Um toque no link de ligação faz o mesmo que mandar o código de ligação ao bot.' },
+  { n: 248, pai: null, nome: 'Oiticica', modelo: 'sonnet', pts: 1, inicio: '10:25', pr: '10:26', fim: '10:43', num: 250, deps: [], nivel: 0, lin: 3,
+    rule: 'Todo texto que a pessoa lê chama o app de Niney, com «niney» em minúscula só no logo e na aba do navegador.' },
+  { n: 240, pai: 238, nome: 'Juazeiro', modelo: 'opus', pts: 3, inicio: '11:33', pr: '12:06', fim: '12:43', num: 251, deps: [239], nivel: 1, lin: 1,
+    rule: 'Toda mensagem do bot que depende de algo no app leva um link para o lugar certo, e o bot só diz que pode mandar movimentações quando a chave Gemini existe.' },
+  { n: 241, pai: 238, nome: 'Umbu', modelo: 'opus', pts: 5, inicio: '11:33', pr: '12:07', fim: '13:05', num: 252, deps: [236, 239], nivel: 1, lin: 2,
+    rule: 'Enquanto Primeiros passos não for encerrada, o dono entra por ela, e ela encerra quando os três passos estão feitos ou quando ele toca em Pular.' },
+  { n: 242, pai: 238, nome: 'Aroeira', modelo: 'sonnet', pts: 1, inicio: '13:12', pr: '13:14', fim: '14:19', num: 254, deps: [241], nivel: 2, lin: 2,
+    rule: 'O convite aponta para Primeiros passos, e a chave Gemini explica por que precisa de cobrança, sem tirar a pessoa do app.' }
+];
+const MOMENTOS = ['09:41', '09:44', '09:56', '10:14', '10:25', '10:43', '11:33', '12:07', '12:43', '13:05', '13:12', '13:14', '14:19'];
+const VARIANTES = { A: 'Colunas por estado', B: 'Grafo de dependências', C: 'Linha do tempo' };
+const COLUNAS = [['fila', 'Na fila'], ['espera', 'Esperando outro'], ['rodando', 'Rodando'], ['pr', 'PR aberto'], ['merge', 'Mergeado']];
+const params = new URLSearchParams(location.search);
+let variante = VARIANTES[params.get('variant')] ? params.get('variant') : 'A';
+let agora = MOMENTOS.includes(params.get('m')) ? params.get('m') : '09:41';
+const epoca = h => Date.parse(`2026-11-06T${h}:00-03:00`) / 1000;
+const minutos = h => { const [a, b] = h.split(':').map(Number); return a * 60 + b; };
+const ticket = n => TICKETS.find(t => t.n === n);
+const estado = t => agora >= t.fim ? 'merge' : agora >= t.pr ? 'pr' : agora >= t.inicio ? 'rodando' : t.deps.some(d => agora < ticket(d).fim) ? 'espera' : 'fila';
+const andamento = () => TICKETS.filter(t => ['rodando', 'pr'].includes(estado(t)));
+const esperaPor = t => t.deps.filter(d => agora < ticket(d).fim).map(d => agora >= ticket(d).pr ? `PR #${ticket(d).num}` : `#${d}`).join(', ');
+
+function rodape(t) {
+  const e = estado(t);
+  if (e === 'espera') return `espera ${esperaPor(t)}`;
+  if (e === 'fila') return 'livre, ainda não saiu';
+  if (e === 'rodando') return `${t.nome} · há ${minutos(agora) - minutos(t.inicio)}m`;
+  if (e === 'pr') return `PR #${t.num} · ${t.nome}`;
+  return `PR #${t.num} · ${t.fim}`;
+}
+
+const cartao = (t, extra = '') => `<article class="card s-${estado(t)}" data-n="${t.n}" data-nivel="${t.nivel}" ${extra}>
+  <header><b>#${t.n}</b><span>${t.pai ? `de #${t.pai} · ` : ''}${t.pts} pts · ${t.modelo}</span></header>
+  <p>${t.rule}</p><footer>${rodape(t)}</footer></article>`;
+
+const varianteA = () => `<div class="colunas">${COLUNAS.map(([id, nome]) => {
+  const lista = TICKETS.filter(t => estado(t) === id);
+  return `<div class="coluna ${id}"><h3>${nome} (${lista.length})</h3>${lista.map(t => cartao(t)).join('') || '<span class="vazio">—</span>'}</div>`;
+}).join('')}</div>`;
+
+const varianteB = () => `<div class="grafo" id="grafo"><svg id="arestas" aria-hidden="true"></svg>${TICKETS.map(t =>
+  cartao(t, `style="grid-column:${t.nivel + 1};grid-row:${t.lin}"`)).join('')}</div>
+  <div class="grafo-nota">Seta: um ticket libera o outro. Tracejada: ainda não liberou.</div>`;
+
+function arestas() {
+  const g = document.getElementById('grafo');
+  const svg = document.getElementById('arestas');
+  if (!g || getComputedStyle(svg).display === 'none') return;
+  const caixa = g.getBoundingClientRect();
+  const no = n => g.querySelector(`[data-n="${n}"]`).getBoundingClientRect();
+  const caminhos = TICKETS.flatMap(t => t.deps.map(d => {
+    const a = no(d), b = no(t.n);
+    const x1 = a.right - caixa.left, y1 = a.top + a.height / 2 - caixa.top;
+    const x2 = b.left - caixa.left - 7, y2 = b.top + b.height / 2 - caixa.top;
+    const meio = (x1 + x2) / 2;
+    return `<path class="${agora >= ticket(d).fim ? 'livre' : ''}" marker-end="url(#ponta)" d="M${x1} ${y1} C${meio} ${y1} ${meio} ${y2} ${x2} ${y2}"/>`;
+  })).join('');
+  svg.innerHTML = `<defs><marker id="ponta" viewBox="0 0 10 10" refX="1" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" style="fill:var(--dim);stroke:none"/></marker></defs>${caminhos}`;
+}
+
+function faixas() {
+  const marcas = [...new Set(TICKETS.flatMap(t => [t.inicio, t.fim]))].sort();
+  const saida = [];
+  marcas.slice(0, -1).forEach((de, i) => {
+    const ate = marcas[i + 1];
+    const n = TICKETS.filter(t => t.inicio <= de && t.fim > de).length;
+    if (n < 2) return;
+    const ultima = saida[saida.length - 1];
+    if (ultima && ultima.ate === de && ultima.n === n) ultima.ate = ate;
+    else saida.push({ de, ate, n });
+  });
+  return saida.filter(f => f.de <= agora).map(f => ({ ...f, ate: f.ate < agora ? f.ate : agora }));
+}
+
+function varianteC() {
+  const inicio = minutos('09:30'), fim = minutos('14:30');
+  const x = h => ((minutos(h) - inicio) / (fim - inicio) * 100).toFixed(2);
+  const trecho = (de, ate, classe) => de < ate ? `<i class="${classe}" style="left:${x(de)}%;width:${(x(ate) - x(de)).toFixed(2)}%"></i>` : '';
+  const menor = (a, b) => a < b ? a : b;
+  const horas = ['10:00', '11:00', '12:00', '13:00', '14:00'];
+  const fx = faixas();
+  const eixo = `<div class="crono-eixo topo-vazio"></div><div class="crono-eixo">${horas.map(h => `<span style="left:${x(h)}%">${h}</span>`).join('')}</div>`;
+  const linhas = [...TICKETS].sort((a, b) => a.inicio.localeCompare(b.inicio) || a.n - b.n).map(t => `
+    <div class="crono-info"><b>#${t.n}</b><span>${t.pai ? `de #${t.pai} · ` : ''}${t.pts} pts · ${t.nome}</span><p>${t.rule}</p></div>
+    <div class="crono-trilha">${fx.map(f => trecho(f.de, f.ate, 'faixa')).join('')}
+      ${trecho('09:41', menor(t.inicio, agora), 'fila-linha')}
+      ${agora >= t.inicio ? trecho(t.inicio, menor(t.pr, agora), 'barra') : ''}
+      ${agora >= t.pr ? trecho(t.pr, menor(t.fim, agora), 'barra pr') : ''}
+      <i class="agora" style="left:${x(agora)}%"></i></div>`).join('');
+  return `<div class="crono">${eixo}${linhas}
+    <div class="crono-legenda"><span><u style="border-top:1px dashed var(--dim);height:0;border-radius:0"></u>Na fila</span><span><u style="background:var(--ok)"></u>Rodando</span><span><u style="background:repeating-linear-gradient(45deg,var(--warn) 0 4px,rgba(242,193,78,.35) 4px 8px)"></u>PR aberto</span><span><u style="background:rgba(87,214,141,.22)"></u>Faixa verde: em andamento juntos</span></div></div>`;
+}
+
+function painel() {
+  const juntos = andamento();
+  const faixa = document.getElementById('junto');
+  faixa.className = `junto ${juntos.length === 0 ? 'zero' : juntos.length === 1 ? 'um' : ''}`;
+  faixa.textContent = juntos.length === 0 ? 'Ninguém em andamento' : juntos.length === 1 ? `1 em andamento: #${juntos[0].n}` : `${juntos.length} em andamento juntos: ${juntos.map(t => `#${t.n}`).join(' + ')}`;
+  document.getElementById('rodada-corpo').innerHTML = { A: varianteA, B: varianteB, C: varianteC }[variante]();
+  arestas();
+  document.getElementById('proto-nome').textContent = `${variante} · ${VARIANTES[variante]}`;
+  document.getElementById('proto-hora').textContent = agora;
+  document.getElementById('proto-momento').value = MOMENTOS.indexOf(agora);
+  history.replaceState(null, '', `?variant=${variante}&m=${agora}`);
+}
+
+function retrato() {
+  const quando = epoca(agora);
+  const desvio = quando - BASE.generated_at;
+  const janela = j => ({ ...j, resets_at: j.resets_at + desvio });
+  const limits = BASE.limits.map(q => ({ ...q, five_hour: janela(q.five_hour), seven_day: janela(q.seven_day) }));
+  const passo = { rodando: 2, pr: 4, merge: 7 };
+  const texto = { rodando: 'implementando', pr: 'PR aberto', merge: 'mergeado' };
+  const marca = { rodando: 'running', pr: 'review', merge: 'done' };
+  const executores = TICKETS.filter(t => agora >= t.inicio).map(t => ({
+    name: t.nome, model: t.modelo, role: 'Executor', ticket: `#${t.n}`, points: t.pts, status: marca[estado(t)], status_text: texto[estado(t)],
+    since: `${minutos(agora) - minutos(t.inicio)}m`, context: '?', step: passo[estado(t)]
+  }));
+  const orquestrador = { name: 'Orquestrador', model: 'opus', role: 'Orquestrador', ticket: '—', points: '—', status: 'stopped', status_text: 'parado', since: '—', context: '?', step: '—' };
+  const fatias = TICKETS.filter(t => t.pai);
+  return {
+    generated_at: quando, limits, pending: { agents: 0, for_you: 0, total: 0 },
+    projects: [{ name: 'APP FINANCEIRO', for_you: 0, slices: [{ parent: '#238', merged: fatias.filter(t => agora >= t.fim).length, total: fatias.length }], agents: [orquestrador, ...executores] }]
+  };
+}
+
+const fetchReal = window.fetch.bind(window);
+window.fetch = async (url, opcoes) => url === 'snapshot' ? new Response(JSON.stringify(retrato()), { headers: { 'content-type': 'application/json' } }) : fetchReal(url, opcoes);
+
+function atualizar() {
+  data = retrato();
+  render();
+  painel();
+}
+
+function trocarVariante(passo) {
+  const chaves = Object.keys(VARIANTES);
+  variante = chaves[(chaves.indexOf(variante) + passo + chaves.length) % chaves.length];
+  painel();
+}
+
+function trocarMomento(i) {
+  agora = MOMENTOS[Math.max(0, Math.min(MOMENTOS.length - 1, i))];
+  atualizar();
+}
+
+addEventListener('DOMContentLoaded', () => {
+  document.body.insertAdjacentHTML('beforeend', `<div class="proto"><div class="proto-linha"><small>PROTÓTIPO</small><button type="button" id="proto-ant" aria-label="Forma anterior">←</button><strong id="proto-nome"></strong><button type="button" id="proto-prox" aria-label="Próxima forma">→</button></div>
+    <div class="proto-linha"><button type="button" id="proto-volta" aria-label="Momento anterior">−</button><input type="range" id="proto-momento" min="0" max="${MOMENTOS.length - 1}" step="1" aria-label="Momento da rodada"><button type="button" id="proto-avanca" aria-label="Próximo momento">+</button><output id="proto-hora"></output></div></div>`);
+  document.getElementById('proto-ant').onclick = () => trocarVariante(-1);
+  document.getElementById('proto-prox').onclick = () => trocarVariante(1);
+  document.getElementById('proto-volta').onclick = () => trocarMomento(MOMENTOS.indexOf(agora) - 1);
+  document.getElementById('proto-avanca').onclick = () => trocarMomento(MOMENTOS.indexOf(agora) + 1);
+  document.getElementById('proto-momento').oninput = e => trocarMomento(+e.target.value);
+  addEventListener('keydown', e => {
+    if (e.target.matches('input, textarea, [contenteditable]')) return;
+    if (e.key === 'ArrowLeft') trocarVariante(-1);
+    if (e.key === 'ArrowRight') trocarVariante(1);
+  });
+  addEventListener('resize', arestas);
+  painel();
+});
+</script>
+<script>
+const REFRESH_MS = 5000;
+const STALLED_MS = 25000;
+const STEPS = ['reconhecimento', 'implementando', 'revisando', 'PR aberto', 'CI', 'verificado', 'mergeado'];
+const MARK = { running: '●', review: '◐', stopped: '○', blocked: '■', done: '✓', needs: '!', '?': '?' };
+const FILTERS = [
+  ['all', 'Todos', () => true],
+  ['open', 'Pendentes', a => a.status === 'needs' || a.status === 'review'],
+  ['running', 'Rodando', a => a.status === 'running'],
+  ['stopped', 'Parados', a => a.status === 'stopped' || a.status === 'blocked'],
+  ['done', 'Concluídos', a => a.status === 'done']
+];
+let active = 'all';
+let data = null;
+let all = [];
+
+const esc = v => String(v).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+const isNumber = v => typeof v === 'number';
+const stateClass = s => s === '?' ? 'unknown' : esc(s);
+const count = s => all.filter(a => s.includes(a.status)).length;
+const heat = p => p >= 80 ? 'var(--crit)' : p >= 50 ? 'var(--warn)' : 'var(--ok)';
+const percent = v => isNumber(v) ? `${v}%` : esc(v);
+const bar = (p, colour) => `<span class="bar">${isNumber(p) ? `<i style="width:${Math.min(p, 100)}%;background:${colour}"></i>` : ''}</span>`;
+const clock = at => new Date(at * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const weekday = at => new Date(at * 1000).toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+
+function left(at) {
+  const s = at - data.generated_at;
+  if (s < 3600) return `em ${Math.ceil(s / 60)}m`;
+  if (s < 86400) return `em ${Math.floor(s / 3600)}h`;
+  return `em ${Math.floor(s / 86400)}d`;
+}
+
+function reset(at, far) {
+  if (!isNumber(at)) return '?';
+  if (at <= data.generated_at) return 'renovou';
+  return `${far ? weekday(at) + ' ' : ''}${clock(at)} · ${left(at)}`;
+}
+
+function tiles() {
+  const live = w => isNumber(w.used) && (!isNumber(w.resets_at) || w.resets_at > data.generated_at);
+  const windows = data.limits.flatMap(q => [{ ...q.five_hour, far: false, q }, { ...q.seven_day, far: true, q }]);
+  const top = windows.filter(live).sort((a, b) => b.used - a.used)[0];
+  const week = data.limits.filter(q => isNumber(q.seven_day.resets_at) && q.seven_day.resets_at > data.generated_at).sort((a, b) => a.seven_day.resets_at - b.seven_day.resets_at)[0];
+  const ring = 2 * Math.PI * 15;
+  const slices = data.projects.flatMap(p => p.slices).map(s => `<div class="tile"><span class="label">Fatias do ticket ${esc(s.parent)}</span>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="36" height="36" viewBox="0 0 36 36" aria-hidden="true"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--track)" stroke-width="5"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--ok)" stroke-width="5" stroke-dasharray="${ring * s.merged / s.total} ${ring}" transform="rotate(-90 18 18)"/></svg><b>${s.merged} de ${s.total}</b></div></div>`).join('');
+  const agents = all.filter(a => a.name !== '?');
+  const unknown = count(['?']);
+  document.getElementById('tiles').innerHTML = `
+    <div class="tile"><span class="label">Agentes</span><b>${agents.length}</b><small>${count(['needs'])} precisa de você · ${count(['running'])} rodando · ${count(['review'])} revisão · ${count(['stopped', 'blocked'])} parados · ${count(['done'])} concluídos${unknown ? ` · ${unknown} desconhecidos` : ''}</small></div>
+    <div class="tile alert"><span class="label">Pendências</span><b class="needs">${esc(data.pending.total)}</b><small>${esc(data.pending.agents)} com pergunta aberta · ${esc(data.pending.for_you)} em for you</small></div>
+    ${slices}
+    <div class="tile"><span class="label">Mais perto do limite</span>${top ? `<b style="color:${heat(top.used)}">${top.used}%</b><small>${esc(top.q.account)} · ${top.far ? '7 dias' : '5 horas'} · renova ${reset(top.resets_at, top.far)} · lido há ${esc(top.q.age)}</small>` : '<b>?</b>'}</div>
+    <div class="tile"><span class="label">Próximo reset de 7 dias</span>${week ? `<b>${reset(week.seven_day.resets_at, true).split(' · ')[0]}</b><small>${esc(week.account)} · ${left(week.seven_day.resets_at)}</small>` : '<b>?</b>'}</div>`;
+}
+
+function quotas() {
+  const panel = (title, key, far) => `<section class="panel"><h2>${title} <span>por IA</span></h2>${data.limits.map(q => `
+    <div class="quota"><span>${esc(q.account)}</span>${bar(q[key].used, heat(q[key].used))}<span class="pct">${percent(q[key].used)}</span><span class="when">${reset(q[key].resets_at, far)}<br>lido há ${esc(q.age)}</span></div>`).join('')}</section>`;
+  document.getElementById('quotas').innerHTML = panel('Cota de 5 horas', 'five_hour', false) + panel('Cota de 7 dias', 'seven_day', true);
+}
+
+function conclusion(a) {
+  if (!isNumber(a.step)) return `<span class="steps-text">${esc(a.step)}</span>`;
+  const cells = STEPS.map((_, i) => `<i class="${i < a.step ? 'on' : ''}"></i>`).join('');
+  return `<span class="steps" role="img" aria-label="Etapa ${a.step} de 7">${cells}</span><span class="steps-text">${a.step ? STEPS[a.step - 1] : 'não começou'}</span>`;
+}
+
+const ticketOrRole = a => esc(a.ticket === '—' || a.ticket === '?' ? a.role : a.ticket);
+
+function projects() {
+  const test = FILTERS.find(f => f[0] === active)[2];
+  const blocks = data.projects.map(p => {
+    const rows = p.agents.filter(test).sort((a, b) => (b.status === 'needs') - (a.status === 'needs'));
+    if (!rows.length) return '';
+    return `<section class="panel"><div class="project-head"><h2>${esc(p.name)}</h2><span class="note">${p.agents.length} agentes${p.for_you === 0 ? '' : ` · <span class="needs">${esc(p.for_you)} em for you</span>`}</span></div>
+      <table><thead><tr><th class="c-mark"></th><th class="c-name">Agente</th><th class="c-model">Modelo</th><th class="c-task">Tarefa</th><th class="c-pts">Pts</th><th>Status</th><th class="c-time">Tempo</th><th class="c-ctx">Contexto</th><th class="c-done">Conclusão</th></tr></thead><tbody>
+      ${rows.map(a => `<tr class="${a.status === 'needs' ? 'hot' : ''}"><td class="c-mark"><span class="mark ${stateClass(a.status)}">${esc(MARK[a.status] ?? '?')}</span></td><td class="c-name">${esc(a.name)}</td><td class="c-model">${esc(a.model)}</td><td class="c-task">${ticketOrRole(a)}</td><td class="c-pts">${esc(a.points)}</td><td class="c-status">${esc(a.status_text)}</td><td class="c-time">${esc(a.since)}</td>
+      <td class="c-ctx"><span class="ctx">${bar(a.context, 'var(--ctx)')}<span>${percent(a.context)}</span></span></td><td class="c-done">${conclusion(a)}</td></tr>`).join('')}
+      </tbody></table></section>`;
+  }).join('');
+  document.getElementById('projects').innerHTML = blocks || '<section class="panel empty">Nenhum agente neste filtro.</section>';
+}
+
+function attention() {
+  const order = ['needs', 'review', 'blocked'];
+  const items = all.filter(a => order.includes(a.status)).sort((a, b) => order.indexOf(a.status) - order.indexOf(b.status));
+  document.getElementById('attention').innerHTML = items.map(a => `<li><span class="mark ${stateClass(a.status)}">${MARK[a.status]}</span><span>${esc(a.name)} ${ticketOrRole(a)}</span><small>${esc(a.status_text)}</small></li>`).join('');
+}
+
+function filters() {
+  const focused = document.activeElement.id;
+  const box = document.getElementById('filters');
+  box.innerHTML = FILTERS.map(([id, label, test]) => `<button id="filter-${id}" type="button" data-id="${id}" aria-pressed="${id === active}">${label} (${all.filter(test).length})</button>`).join('');
+  box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => { active = b.dataset.id; filters(); projects(); }));
+  document.getElementById(focused)?.focus();
+}
+
+function render() {
+  all = data.projects.flatMap(p => p.agents);
+  document.getElementById('clock').textContent = clock(data.generated_at);
+  tiles(); quotas(); projects(); attention(); filters();
+}
+
+function failed() {
+  const fail = document.getElementById('fail');
+  fail.textContent = `Atualização falhou às ${clock(Date.now() / 1000)}${data ? ` · dados de ${clock(data.generated_at)}` : ''}`;
+  fail.hidden = false;
+}
+
+async function refresh() {
+  try {
+    const answer = await fetch('snapshot', { signal: AbortSignal.timeout(STALLED_MS) });
+    if (!answer.ok) throw new Error(answer.status);
+    data = await answer.json();
+    render();
+    document.getElementById('fail').hidden = true;
+  } catch {
+    failed();
+  }
+  setTimeout(refresh, REFRESH_MS);
+}
+
+refresh();
+</script>
