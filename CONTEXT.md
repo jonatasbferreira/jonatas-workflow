@@ -127,8 +127,12 @@ The review the bot posts on a PR in the shemaobt organisation once João is requ
 _Avoid_: bot review, Joãozinho, reviewer comments
 
 **Cockpit**:
-The read-only list of every running agent terminal in Maestri, across all workspaces, with the plan limits on top, in two views of the same data: the terminal list and the local page. It shows; it never acts on an agent.
+The read-only list of every running agent terminal in Maestri, across all workspaces, with the plan limits on top, in two views of the same data: the terminal list and the local page. The page also holds the Round panel. It shows; it never acts on an agent.
 _Avoid_: dashboard, monitor, control panel
+
+**Round panel**:
+The part of the Cockpit's page that draws a manifest as a dependency graph, each ticket with its Rule line and its state, one project at a time.
+_Avoid_: kanban, round view, timeline
 
 ### Work items
 
