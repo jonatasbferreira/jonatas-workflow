@@ -939,6 +939,376 @@ for order in "100 claude 101 codex" "100 codex 101 claude"; do
 done
 export COCKPIT_PROC_DIR="$T/no-proc"
 
+GH_BIN=$T/gh-bin
+GH_ANSWERS=$T/gh-answers
+GH_LOG=$T/gh.log
+export GH_ANSWERS GH_LOG
+mkdir -p "$GH_BIN"
+cat > "$GH_BIN/gh" <<'EOF'
+#!/bin/bash
+for a; do case "$a" in owner=*) owner=${a#owner=} ;; name=*) name=${a#name=} ;; esac; done
+printf 'repo=%s/%s %s\n' "${owner:-}" "${name:-}" "$*" >> "$GH_LOG"
+[ -f "$GH_ANSWERS/fail" ] && { echo boom >&2; exit 1; }
+[ -f "$GH_ANSWERS/slow" ] && sleep 30
+for a; do case "$a" in number=*) n=${a#number=} ;; esac; done
+if [ -f "$GH_ANSWERS/$n.json" ]; then cat "$GH_ANSWERS/$n.json"; exit 0; fi
+echo '{"data":{"repository":{"issue":null}},"errors":[{"type":"NOT_FOUND"}]}'
+exit 1
+EOF
+chmod +x "$GH_BIN/gh"
+
+gissue() {
+  jq -n --argjson n "$1" --arg t "$2" --arg b "$3" --argjson bl "${4:-[]}" --argjson lv "${5:-[]}" --arg s "${6:-OPEN}" \
+    '{data:{repository:{issue:{number:$n,title:$t,body:$b,state:$s,repository:{nameWithOwner:"o/r"},subIssues:{nodes:$lv},blockedBy:{nodes:$bl}}}}}' > "$GH_ANSWERS/$1.json"
+}
+blocker() { jq -nc --argjson n "$1" --arg s "${2:-OPEN}" --arg r "${3:-o/r}" '{number:$n,state:$s,repository:{nameWithOwner:$r}}'; }
+gleaf() {
+  jq -nc --argjson n "$1" --arg t "$2" --arg b "$3" --argjson bl "${4:-[]}" \
+    '{number:$n,title:$t,body:$b,state:"OPEN",repository:{nameWithOwner:"o/r"},blockedBy:{nodes:$bl}}'
+}
+round_ws() {
+  reset
+  rm -rf "$GH_ANSWERS" "$T/code/gh"
+  mkdir -p "$GH_ANSWERS" "$T/code/gh"
+  : > "$GH_LOG"
+  git -C "$T/code/gh" init -q
+  [ "${1:-}" = none ] || git -C "$T/code/gh" remote add origin "${1:-git@github.com:o/r.git}"
+  WS_DIR=$T/code/gh one_agent Aracati
+}
+refresh() { PATH="$GH_BIN:$PATH" timeout 60 bash "$ROOT/bin/cockpit" --refresh-rounds >/dev/null 2>&1; }
+item() { jq -c --arg t "$2" '.rounds[].items[] | select(.ticket == $t)' <<<"$1"; }
+tickets() { val "$1" '[.rounds[].items[].ticket] | join(" ")'; }
+page_at() { timeout 40 "$CHROME" --headless=new --disable-gpu --no-sandbox --user-data-dir="$T/profile" --window-size="$1,900" --virtual-time-budget="${2:-4000}" --dump-dom "http://127.0.0.1:$PORT/" 2>/dev/null | sed '/<script>/,/<\/script>/d'; }
+gh_serve() { SERVE_PATH="$GH_BIN:$PATH" serve_start; }
+edges() { grep -o '<path class="edge [a-z]*" data-from="[^"]*" data-to="[^"]*"' <<<"$1" | sed -E 's/<path class="edge ([a-z]*)" data-from="([^"]*)" data-to="([^"]*)"/\1 \2>\3/' | sort | tr '\n' ','; }
+cards() { grep -o '<article class="card' <<<"$1" | wc -l; }
+
+round_ws
+note w1 round "# round" "" 'The manifest of the open round: a first line `round · <date>`, then `1. ENG-905 (leaf)`, `2. ENG-894 (parent, 4 leaves)`.' "" \
+  "round · 2026-11-06" "mode: high autonomy" "1. #264 (leaf)" "2. #238 (parent, 5 leaves)" "3. #201 (leaf of #200)" "4. #204 (leaf of #200, blocked by #201)" "5. ENG-905 (leaf)" "" \
+  "Jonatas asks for as much parallel work as the limit allows." "7. #999 (leaf)"
+note w1 board "# board" "testes · https://x" "merge: Jonatas autorizou" "Jurema · #264 · implementing · sonnet · 1" "— · #204 · held behind #201 · opus · 5" \
+  "Cunha · ENG-2173 PR A · merged · sonnet medium · 3" "Trado · ENG-2173 PR B · CI · opus medium · -" "Pua · #238/slug · reviewing · opus · 2" \
+  "status 06/11 18:30 · round open · merged: ENG-1669"
+out=$(snap)
+check "R0 one rounds entry names the project and the round date" "$(val "$out" '[.rounds[] | .project + " " + .date] | join(",")')" "ProjA 2026-11-06"
+check "R0 the manifest starts at the round line and free text after the list is ignored" "$(tickets "$out")" "#264 #201 #204 ENG-905 ENG-2173 PR A ENG-2173 PR B #238/slug"
+check "R0 a board line gives state, executor, model and points" "$(val "$(item "$out" '#264')" '[.state, .executor, .model, .points] | join(" ")')" "implementando Jurema sonnet 1"
+check "R0 a codename of — is no executor" "$(val "$(item "$out" '#204')" '.executor')" "—"
+check "R0 a manifest parent is named" "$(val "$(item "$out" '#201')" '.parent')" "#200"
+check "R0 a slug slice names its parent" "$(val "$(item "$out" '#238/slug')" '.parent')" "#238"
+check "R0 a points field of - is no points" "$(val "$(item "$out" 'ENG-2173 PR B')" '.points')" "—"
+
+reset
+one_agent Aracati
+note w1 board "#171/#184 · merged PR #1 · opus"
+note w1 round "round · 2026-11-06" "1. #184 (leaf)"
+check "R0 a board line with no codename names its ticket's slice" "$(val "$(item "$(snap)" '#184')" '[.state, .parent, .executor] | join(" ")')" "mergeado PR #1 #171 —"
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #240 (leaf)" "2. #241 (leaf)"
+gissue 240 "Título" "**Rule:** Regra 240." 
+gissue 241 "Título" "**Rule:** Regra 241." "[$(blocker 240)]"
+before=$(find "$T/maestri" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum)
+refresh; snap >/dev/null
+check "R1 a refresh and a snapshot leave the notes untouched" "$(find "$T/maestri" -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum)" "$before"
+hasnt "R1 no gh call writes" "$(cat "$GH_LOG")" 'mutation\|issue \(edit\|comment\|close\)\|--method\|-X '
+has "R1 the fixture did call gh" "$(cat "$GH_LOG")" 'number=240'
+check "R0 the cache adds no account to the quotas" "$(val "$(snap)" '[.limits[].account] | join(",")')" "claude,codex"
+
+: > "$GH_LOG"
+out=$(PATH="$GH_BIN:$PATH" snap)
+check "R2 --json does not call gh" "$(wc -l < "$GH_LOG")" 0
+check "R2 --json reads the Rule from the cache" "$(val "$(item "$out" '#240')" '.rule')" "Regra 240."
+touch "$GH_ANSWERS/slow"
+gh_serve
+for _ in $(seq 50); do [ -s "$GH_LOG" ] && break; sleep 0.1; done
+has "R2 the server refreshes the cache by itself" "$(cat "$GH_LOG")" 'number=240'
+start=$(date +%s%N)
+code=$(code_of)
+check "R2 a slow refresh does not delay the snapshot" "$code $(( ($(date +%s%N) - start) / 1000000000 < 4 ))" "200 1"
+serve_stop
+sleep 0.5
+check "R2 nothing of a slow refresh survives the server" "$(pgrep -fc "$GH_BIN/gh")" 0
+rm "$GH_ANSWERS/slow"
+
+gissue 240 "Título" "**Rule:** Regra nova."
+refresh
+check "R3 before a failure the data is not stale" "$(val "$(snap)" '.rounds[0].stale')" false
+agents=$(val "$(snap)" '.projects')
+touch "$GH_ANSWERS/fail"
+refresh
+out=$(snap)
+check "R3 a failed refresh keeps the last data" "$(val "$(item "$out" '#240')" '.rule')" "Regra nova."
+check "R3 a failed refresh marks it stale" "$(val "$out" '.rounds[0].stale')" true
+check "R3 a failed refresh leaves the agents table alone" "$(val "$out" '.projects')" "$agents"
+gh_serve
+has "R3 the page marks stale data" "$(visible "$(page)")" 'GitHub desatualizado'
+serve_stop
+rm "$GH_ANSWERS/fail"
+refresh
+check "R3 the next good refresh clears the mark" "$(val "$(snap)" '.rounds[0].stale')" false
+mkdir -p "$T/past"
+printf '#!/bin/bash\necho 1000\n' > "$T/past/date"
+chmod +x "$T/past/date"
+PATH="$T/past:$GH_BIN:$PATH" timeout 60 bash "$ROOT/bin/cockpit" --refresh-rounds >/dev/null 2>&1
+check "R3 a cache nobody refreshed for long is stale" "$(val "$(snap)" '.rounds[0].stale')" true
+echo 'not json' > "$STATE/rounds/w1.json"
+out=$(snap)
+check "R3 a broken cache leaves the agents table alone" "$(val "$out" '.projects')" "$agents"
+check "R3 a broken cache keeps the panel, stale" "$(val "$out" '[(.rounds[0].items | length), .rounds[0].stale] | join(" ")')" "2 true"
+rm "$STATE/rounds/w1.json"
+touch "$GH_ANSWERS/fail"
+refresh
+out=$(snap)
+check "R3 a first refresh that fails is stale with no Rule" "$(val "$out" '[.rounds[0].stale, .rounds[0].items[0].rule] | join(" ")')" "true "
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #240 (leaf)" "2. #241 (leaf)" "3. #242 (leaf, blocked by #240)"
+note w1 board "Jurema · #240 · implementing · sonnet · 1"
+gissue 240 "Título" "**Rule:** Regra 240." "[]" "[]" CLOSED
+gissue 241 "Título" "**Rule:** Regra 241." "[$(blocker 240)]"
+gissue 242 "Título" "**Rule:** Regra 242."
+refresh
+out=$(snap)
+check "R4 state comes from the board even when GitHub closed the ticket" "$(val "$(item "$out" '#240')" '.state')" "implementando"
+check "R4 the Rule comes from GitHub" "$(val "$(item "$out" '#241')" '.rule')" "Regra 241."
+check "R4 a board line that says the blocker is not merged keeps it open though GitHub closed it" "$(val "$(item "$out" '#241')" '.state')" "espera #240"
+gh_serve
+dom=$(page_at 1440)
+check "R4 an arrow comes from GitHub, not from the manifest's list" "$(edges "$dom")" "open #240>#241,"
+has "R4 the card shows the Rule" "$(visible "$dom")" 'Regra 241.'
+serve_stop
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #250 (leaf)" "2. #251 (leaf of #200, blocked by #250)" "3. #252 (leaf, blocked by #250)" "4. #253 (leaf, blocked by #254)" "5. #255 (leaf, blocked by #250, #254)"
+note w1 board "# board"
+out=$(snap)
+check "R5 a manifest ticket with no board line reads Na fila" "$(val "$(item "$out" '#250')" '.state')" "Na fila"
+check "R5 a blocked by in the manifest reads espera with GitHub out of reach" "$(val "$(item "$out" '#251')" '.state')" "espera #250"
+check "R5 two open blockers both read in espera" "$(val "$(item "$out" '#255')" '.state')" "espera #250, #254"
+note w1 board "Jurema · #250 · merged PR #9 · sonnet · 1"
+check "R5 a merged blocker frees the ticket" "$(val "$(item "$(snap)" '#252')" '.state')" "Na fila"
+gissue 253 "T" "**Rule:** R."
+gissue 254 "T" "**Rule:** R." "[]" "[]" CLOSED
+refresh
+check "R5 a blocker off the board counts as GitHub says" "$(val "$(item "$(snap)" '#253')" '.state')" "Na fila"
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #260 (leaf)"
+gissue 260 "T" "**Rule:** R." "[$(blocker 261)]"
+refresh
+check "R5 a blocker only GitHub names is enough to wait" "$(val "$(item "$(snap)" '#260')" '.state')" "espera #261"
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #1 (leaf)" "2. #2 (leaf)" "3. #3 (leaf)" "4. #4 (leaf)" "5. #5 (leaf)"
+note w1 board "— · #1 · held behind PR #260 · opus · 5" "— · #2 · held behind #201 · opus · 5" "Facheiro · #3 · aguarda vaga · opus · 3" "Sisal · #4 · a decidir, pelo Jonatas · opus · 3" "Sisal · #5 · implementing · opus · 3"
+out=$(snap)
+check "R6 held behind PR #N reads espera PR #N" "$(val "$(item "$out" '#1')" '.state')" "espera PR #260"
+check "R6 held behind #N reads espera #N" "$(val "$(item "$out" '#2')" '.state')" "espera #201"
+check "R6 an unknown state appears as written" "$(val "$(item "$out" '#3')" '.state')" "aguarda vaga"
+check "R6 an unknown state with text appears as written" "$(val "$(item "$out" '#4')" '.state')" "a decidir, pelo Jonatas"
+check "R6 a known state is translated as in the table" "$(val "$(item "$out" '#5')" '.state')" "implementando"
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #270 (leaf)" "2. #238 (parent, 2 leaves, blocked by #270)"
+note w1 board "Jurema · #239 · implementing · sonnet · 1"
+gissue 270 "T" "**Rule:** R."
+gissue 238 "Pai" "**Rule:** Regra do pai." "[$(blocker 271)]" "[$(gleaf 239 'F' '**Rule:** Folha 239.'),$(gleaf 241 'F' '**Rule:** Folha 241.' "[$(blocker 239)]")]"
+refresh
+out=$(snap)
+check "R7 a parent is not a node: its leaves are" "$(tickets "$out")" "#270 #239 #241"
+check "R7 a leaf names its parent" "$(val "$(item "$out" '#241')" '.parent')" "#238"
+check "R7 the panel names the parent" "$(val "$out" '.rounds[0].parents | map(.ticket + " " + (.leaves | tostring)) | join(",")')" "#238 2"
+check "R7 a leaf has its own Rule" "$(val "$(item "$out" '#239')" '.rule')" "Folha 239."
+check "R7 a leaf waits on its own blocker and on its parent's, from the manifest and from GitHub" "$(val "$(item "$out" '#241')" '.state')" "espera #270, #239, #271"
+gh_serve
+dom=$(page_at 1440); text=$(visible "$dom")
+has "R7 the leaf's arrow comes from the sub-issue" "$(edges "$dom")" 'open #239>#241,'
+has "R7 the page names the parent" "$text" 'Pais: #238 (2 folhas)'
+has "R7 the card names its parent" "$text" 'de #238'
+serve_stop
+rm "$STATE/rounds/w1.json"
+out=$(snap)
+check "R7 with no cache a parent is still no node" "$(tickets "$out")" "#270 #239"
+check "R7 with no cache the panel still names the parent" "$(val "$out" '.rounds[0].parents[0] | .ticket + " " + (.leaves | tostring)')" "#238 2"
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #280 (leaf)" "2. #281 (leaf)"
+gissue 280 "Só o título" "**Context:** sem regra aqui."
+gissue 281 "T" $'**Context:** algo.\r\n\r\n**Rule:** Regra com CRLF.\r\n\r\n**Risk:** baixo.'
+refresh
+out=$(snap)
+check "R8 a ticket with no Rule line shows its title" "$(val "$(item "$out" '#280')" '.rule')" "Só o título"
+check "R8 a Rule line ends at its line" "$(val "$(item "$out" '#281')" '.rule')" "Regra com CRLF."
+gh_serve
+has "R8 the card shows the title" "$(visible "$(page_at 1440)")" 'Só o título'
+serve_stop
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #290 (leaf)" "2. #291 (leaf)" "3. #292 (leaf)"
+gissue 290 "T" "**Rule:** R." "[$(blocker 300)]"
+gissue 291 "T" "**Rule:** R." "[$(blocker 290 OPEN x/y)]"
+gissue 292 "T" "**Rule:** R."
+note w1 board "Jurema · #290 · implementing · sonnet · 1"
+refresh
+out=$(snap)
+check "R9 a blocker outside the manifest gives no node" "$(tickets "$out")" "#290 #291 #292"
+gh_serve
+dom=$(page_at 1440)
+check "R9 a blocker outside the manifest has no arrow, and neither has a same number in another repository" "$(edges "$dom")" ""
+has "R9 the blocker is text on the card" "$(visible "$dom")" 'implementando · Jurema · espera #300'
+serve_stop
+
+for form in https://github.com/o/r.git git@github.com:o/r ssh://git@github.com/o/r.git; do
+  round_ws "$form"
+  note w1 round "round · 2026-11-06" "1. #290 (leaf)"
+  gissue 290 "T" "**Rule:** R."
+  refresh
+  has "R0 the remote $form names the repository" "$(cat "$GH_LOG")" '^repo=o/r '
+done
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #290 (leaf)" "2. #291 (leaf)"
+gissue 290 "T" "**Rule:** R."
+refresh
+out=$(snap)
+check "R0 an issue GitHub does not know is not a failure" "$(val "$out" '[.rounds[0].stale, (.rounds[0].items[0].rule)] | join(" ")')" "false R."
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #240 (leaf)" "2. #241 (leaf)"
+workspace w2 "ProjB" "$(terminal Outro claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-b")"
+note w2 round "round · 2026-11-07" "1. #350 (leaf)"
+workspace w3 "ProjC" "$(terminal Mais claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-c")"
+note w3 round "# round" "" "(no round open)"
+workspace w4 "ProjD" "$(terminal Fim claude_code running 'claude --model sonnet' AAAA-EXEC "$T/code/proj-d")"
+note w4 round "round · 2026-11-01" "1. #9 (leaf)" "(no round open)"
+rm -rf "$T/copy"; mkdir -p "$T/copy"; cp -r "$ROOT/bin" "$ROOT/templates" "$T/copy/"
+sed -i 's|^refresh();$|refresh();\nlet probed = false;\nsetInterval(() => { const name = document.querySelector("#round .round-project")?.textContent; if (!name \|\| probed) return; probed = true; document.body.insertAdjacentHTML("beforeend", `<pre id="probe-first">${name} ${document.querySelector("#round button[data-move=\\"1\\"]").offsetHeight > 0}</pre>`); document.querySelector("#round button[data-move=\\"1\\"]").click(); setTimeout(() => document.body.insertAdjacentHTML("beforeend", `<pre id="probe-moved">${document.querySelector("#round .round-project").textContent}</pre>`), 6000); }, 50);|' "$T/copy/templates/cockpit.html"
+check "R10 the panel moves only through projects with a manifest" "$(val "$(snap)" '[.rounds[].project] | join(",")')" "ProjA,ProjB"
+ORIG_ROOT=$ROOT; ROOT=$T/copy
+serve_start
+for width in 1440 390; do
+  dom=$(page_at "$width" 9000)
+  has "R10 the page opens on the first project with its arrow in sight at $width" "$dom" '<pre id="probe-first">ProjA true'
+  has "R10 the arrow moves to the next project and a refresh keeps it there at $width" "$dom" '<pre id="probe-moved">ProjB'
+done
+ROOT=$ORIG_ROOT
+serve_stop
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #240 (leaf)"
+serve_start
+hasnt "R10 with one manifest there is no arrow" "$(page)" 'data-move'
+serve_stop
+
+round_ws
+note w1 round "# round" "" 'The manifest: a first line `round · <date>`, then lines.' "" "(no round open)"
+check "R11 with no manifest rounds is empty" "$(val "$(snap)" '.rounds | length')" 0
+for width in 1440 390; do
+  serve_start
+  dom=$(page_at "$width")
+  check "R11 with no manifest anywhere the panel is one line at $width" "$(visible "$(grep -oP 'id="round">\K.*?(?=</section>)' <<<"$dom")")" ' Sem rodada aberta '
+  check "R11 with no manifest there is no card at $width" "$(cards "$dom")" 0
+  serve_stop
+done
+note w1 round "round · 2026-11-06" "text only, no list"
+check "R11 a round line with no list is no manifest" "$(val "$(snap)" '.rounds | length')" 0
+
+round_ws
+note w1 round "round · 2026-11-05" "1. ENG-1669 (leaf)" "2. ENG-2148 (parent, 18 leaves)" "3. ENG-2190 (leaf, blocked by ENG-1669)"
+note w1 board "Trena · ENG-1669 · reviewing · sonnet low · 1" "Prego · ENG-2166 · merged · opus medium · 2"
+refresh
+out=$(snap)
+check "R12 an ENG project calls no gh" "$(wc -l < "$GH_LOG")" 0
+check "R12 an ENG ticket shows number, state and executor" "$(val "$(item "$out" 'ENG-1669')" '[.ticket, .state, .executor] | join(" ")')" "ENG-1669 revisando Trena"
+check "R12 an ENG ticket has no Rule" "$(val "$(item "$out" 'ENG-1669')" '.rule')" "null"
+check "R12 an ENG ticket waits on its manifest blocker" "$(val "$(item "$out" 'ENG-2190')" '.state')" "espera ENG-1669"
+check "R12 an ENG leaf the board names is a node" "$(val "$(item "$out" 'ENG-2166')" '.state')" "mergeado"
+serve_start
+dom=$(page_at 1440)
+check "R12 an ENG project has no arrows on the page" "$(edges "$dom")" ""
+has "R12 an ENG project shows its cards" "$(visible "$dom")" 'ENG-1669'
+serve_stop
+
+round_ws none
+note w1 round "round · 2026-11-06" "1. #240 (leaf)"
+refresh
+check "R12 a workspace with no GitHub remote calls no gh" "$(wc -l < "$GH_LOG")" 0
+round_ws https://gitlab.com/o/r.git
+note w1 round "round · 2026-11-06" "1. #240 (leaf)"
+refresh
+check "R12 a workspace with another host's remote calls no gh" "$(wc -l < "$GH_LOG")" 0
+
+round_ws
+XSS='<img src=x onerror=alert(1)>'
+note w1 round "round · 2026-11-06" "1. #310 (leaf)" "2. #311 (leaf)"
+note w1 board "$XSS · #310 · $XSS · $XSS · 1" "Sisal · #313 \"><img src=x> · implementing · opus · 1"
+gissue 310 "T" "**Rule:** $XSS"
+gissue 311 "$XSS" "sem regra" "[$(blocker 312 OPEN "$XSS")]"
+refresh
+gh_serve
+dom=$(page_at 1440)
+hasnt "R13 issue text never reaches the page as markup" "$dom" '<img'
+has "R13 issue text is shown as text" "$dom" '&lt;img'
+serve_stop
+
+graph() {
+  round_ws
+  note w1 round "round · 2026-11-06" "1. #240 (leaf)" "2. #241 (leaf)" "3. #242 (leaf)" "4. #243 (leaf)" "5. #244 (leaf)" "6. #245 (leaf)" "7. #246 (leaf)"
+  note w1 board "Jurema · #240 · implementing · sonnet · 1" "Cumaru · #241 · PR open · sonnet · 1" "— · #242 · held behind #241 · opus · 5" \
+    "Facheiro · #243 · aguarda vaga · opus · 3" "Sisal · #244 · a decidir, ainda · opus · 3" "Marmeleiro · #246 · merged · sonnet · 2"
+  gissue 240 "T" "**Rule:** Regra 240."
+  gissue 241 "T" "**Rule:** Regra 241."
+  gissue 242 "T" "**Rule:** Regra 242." "[$(blocker 241)]"
+  gissue 243 "T" "**Rule:** Regra 243." "[$(blocker 246 CLOSED)]"
+  gissue 244 "T" "**Rule:** Regra 244."
+  gissue 245 "T" "**Rule:** Regra 245." "[$(blocker 242)]"
+  gissue 246 "T" "**Rule:** Regra 246." "[]" "[]" CLOSED
+  refresh
+}
+graph
+gh_serve
+dom=$(page_at 1440)
+check "R14 what runs together is only a count and the numbers: in progress is board_step 1 to 6" "$(grep -oP '<p class="together">\K[^<]*' <<<"$dom")" '2 em andamento juntos: #240 + #241'
+check "R15 at 1440 a blocker not merged has a dashed arrow, a merged one a solid arrow" "$(edges "$dom")" "merged #246>#243,open #241>#242,open #242>#245,"
+dom=$(page_at 390)
+check "R15 below 760 px there are no arrows" "$(edges "$dom")" ""
+check "R15 below 760 px every card is there" "$(cards "$dom")" 7
+has "R15 below 760 px a waiting card carries espera" "$(visible "$dom")" 'espera #241'
+serve_stop
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #240 (leaf)" "2. #241 (leaf)"
+note w1 board "Jurema · #240 · implementing · sonnet · 1" "Cumaru · #241 · merged · sonnet · 1"
+serve_start
+hasnt "R14 one ticket running shows no together line" "$(visible "$(page)")" 'juntos'
+serve_stop
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #320 (leaf)" "2. #321 (leaf)"
+gissue 320 "T" "**Rule:** R." "[$(blocker 321)]"
+gissue 321 "T" "**Rule:** R." "[$(blocker 320)]"
+refresh
+gh_serve
+check "R15 a blocker cycle still draws every card" "$(cards "$(page_at 1440)")" 2
+serve_stop
+
+graph
+gh_serve
+rm -rf "$T/copy"; mkdir -p "$T/copy"; cp -r "$ROOT/bin" "$ROOT/templates" "$T/copy/"
+serve_stop
+sed -i 's|^refresh();$|refresh();\nlet probed = false;\nsetInterval(() => { if (probed \|\| !document.querySelector("#round .card")) return; probed = true; setTimeout(() => document.body.insertAdjacentHTML("beforeend", `<pre id="probe-width">${Math.max(document.documentElement.scrollWidth, document.querySelector(".graph-scroll").scrollWidth)} ${Math.min(innerWidth, document.querySelector(".graph-scroll").clientWidth + 100000 * (document.querySelector(".graph-scroll").scrollWidth <= document.querySelector(".graph-scroll").clientWidth))}</pre><pre id="probe-together">${document.querySelector(".together").offsetHeight > 0}</pre><pre id="probe-indent">${getComputedStyle(document.querySelector(".card[data-depth=\\"2\\"]")).marginLeft}</pre>`), 300); }, 50);|' "$T/copy/templates/cockpit.html"
+ORIG_ROOT=$ROOT; ROOT=$T/copy
+SERVE_PATH="$GH_BIN:$PATH" serve_start
+dom=$(page_at 390)
+ROOT=$ORIG_ROOT
+serve_stop
+check "R14 at 390 the together line is in sight" "$(grep -oP '<pre id="probe-together">\K[^<]*' <<<"$dom")" true
+check "R14 at 390 the together line is the same" "$(grep -oP '<p class="together">\K[^<]*' <<<"$dom")" '2 em andamento juntos: #240 + #241'
+check "R15 below 760 px a card indents by depth" "$(grep -oP '<pre id="probe-indent">\K[^<]*' <<<"$dom")" 32px
+check "R15 below 760 px there is no sideways scroll" "$(grep -oP '<pre id="probe-width">\K[0-9]+ [0-9]+' <<<"$dom" | awk '{print ($1 <= $2) ? "fits" : $0}')" fits
+
 check "S12 the --once output for the existing fixtures is unchanged" "$(cat "$T/once-changed")" ""
 
 exit $failed
