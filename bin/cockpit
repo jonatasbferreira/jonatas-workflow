@@ -11,22 +11,23 @@ declare -A procs=()
 
 KNOWN='def known: if . == null or . == "" or test("\t") then "?" elif . == "-" then "—" elif test("^[0-9]+$") then tonumber else . end;'
 MANIFEST='
+def TICKET: "#[0-9]+|[A-Z]+-[0-9]+";
 def ticket_at($re): [capture($re)][0];
-def entry: (.d // "") as $d
+def manifest_item: (.d // "") as $d
   | {ticket: .t,
      is_parent: ($d | startswith("parent")),
      leaves: ($d | ticket_at("(?<n>[0-9]+) leaves?").n | if . then tonumber else null end),
-     parent: ($d | ticket_at("leaf of (?<p>#[0-9]+|[A-Z]+-[0-9]+)").p),
-     blocked: [$d | ticket_at("blocked by (?<b>.*)$").b // "" | scan("#[0-9]+|[A-Z]+-[0-9]+")]};
+     parent: ($d | ticket_at("leaf of (?<p>\(TICKET))").p),
+     blocked: [$d | ticket_at("blocked by (?<b>.*)$").b // "" | scan(TICKET)]};
 def manifest:
   (split("\n") | map(rtrimstr("\r"))) as $lines
   | (first($lines | to_entries[] | select(.value | test("^round · [0-9]{4}-[0-9]{2}-[0-9]{2}")) | .key) // null) as $start
   | if $start == null or any($lines[]; . == "(no round open)") then null else
       {date: ($lines[$start] | capture("^round · (?<d>[0-9-]+)").d),
-       entries: (reduce $lines[$start + 1:][] as $line ({list: [], open: true};
+       items: (reduce $lines[$start + 1:][] as $line ({list: [], open: true};
          if .open then
-           ($line | ticket_at("^[0-9]+\\. (?<t>#[0-9]+|[A-Z]+-[0-9]+)(?: \\((?<d>[^)]*)\\))?")) as $m
-           | if $m then .list += [$m | entry]
+           ($line | ticket_at("^[0-9]+\\. (?<t>\(TICKET))(?: \\((?<d>[^)]*)\\))?")) as $m
+           | if $m then .list += [$m | manifest_item]
              elif ($line | test("^\\s*$")) or (.list | length) == 0 then .
              else .open = false end
          else . end) | .list)}
@@ -36,16 +37,16 @@ def distinct(f): reduce .[] as $x ([]; if any(.[]; f == ($x | f)) then . else . 
 def slices:
   split("\n") | map(select(. != "") | split("\u001f"))
   | map(.[1] as $label
-    | ($label | ticket_at("^(?<p>#[0-9]+|[A-Z]+-[0-9]+)/(?<c>.+)$")) as $path
-    | (if $path != null and ($path.c | test("^(#[0-9]+|[A-Z]+-[0-9]+)$")) then $path.c else $label end) as $ticket
+    | ($label | ticket_at("^(?<p>\(TICKET))/(?<c>.+)$")) as $path
+    | (if $path != null and ($path.c | test("^(\(TICKET))$")) then $path.c else $label end) as $ticket
     | {ticket: $ticket, base: ($ticket | split(" ")[0]), parent: $path.p, executor: .[0], state: .[2],
        model: (.[3] | known), points: (.[4] | known), step: (.[5] | known)});
 ($cached[0] // {}) as $cache
 | def issue($t): $cache.issues[$t] // {};
   ($note | manifest) as $m
   | ($lines | slices) as $board
-  | select($m != null and ($m.entries | length) > 0)
-  | ($m.entries | map(. as $e
+  | select($m != null and ($m.items | length) > 0)
+  | ($m.items | map(. as $e
       | if .is_parent then
           (issue($e.ticket).leaves // [])
           | map({ticket: ., parent: $e.ticket, blocked: $e.blocked, inherited: (issue($e.ticket).blockers // [])})
@@ -63,13 +64,13 @@ def slices:
     def item($e; $s):
       blockers($e) as $b
       | [$b[] | select(.open) | .ticket] as $waiting
-      | {ticket: ($s.ticket // $e.ticket), parent: ($e.parent // $s.parent), rule: (issue($e.ticket) | .rule // .title),
+      | {ticket: ($s.ticket // $e.ticket), base: ($s.base // $e.ticket), parent: ($e.parent // $s.parent), rule: (issue($e.ticket) | .rule // .title),
          state: ($s.state // (if ($waiting | length) > 0 then "espera " + ($waiting | join(", ")) else "Na fila" end)),
          step: ($s.step // "—"), executor: ($s.executor // "—"), model: ($s.model // "—"), points: ($s.points // "—"), blockers: $b};
     {project: $project, date: $m.date,
-     stale: (($cache.stale // false) or ($cache.refreshed_at != null and $now - $cache.refreshed_at > '"$ROUND_STALE_SECONDS"')),
+     stale: (($cache.stale // false) or ($cache.refreshed_at != null and $now - $cache.refreshed_at > $stale_after)),
      refreshed_at: $cache.refreshed_at,
-     parents: [$m.entries[] | select(.is_parent) | {ticket, leaves}],
+     parents: [$m.items[] | select(.is_parent) | {ticket, leaves}],
      items: ([$tickets[] | . as $e | [$board[] | select(.base == $e.ticket)] as $own
               | if ($own | length) > 0 then $own[] | item($e; .) else item($e; null) end]
              + [$unlisted[] | item({ticket: .base, parent: .parent}; .)])}'
@@ -583,7 +584,7 @@ rounds() {
     w=${w%/}
     [ -f "$w/workspace.json" ] && [ -f "$w/notes/round.md" ] || continue
     project=$(jq -r '.payload.name // "?"' "$w/workspace.json" 2>/dev/null)
-    jq -nc --argjson now "$(date +%s)" --arg project "$project" --rawfile note "$w/notes/round.md" \
+    jq -nc --argjson now "$(date +%s)" --argjson stale_after "$ROUND_STALE_SECONDS" --arg project "$project" --rawfile note "$w/notes/round.md" \
       --rawfile lines <(round_slices "$w/notes/board.md") --slurpfile cached <(round_cache "$rounds_dir/${w##*/}.json") "$ROUND" 2>/dev/null
   done
 }
@@ -641,7 +642,7 @@ refresh_rounds() {
     w=${w%/}
     [ -f "$w/workspace.json" ] && [ -f "$w/notes/round.md" ] || continue
     repo=$(github_repo "$(jq -r '.payload.workingDirectory // ""' "$w/workspace.json" 2>/dev/null)") || continue
-    numbers=$(jq -Rrs "$MANIFEST"'manifest // empty | [.entries[] | .ticket, .blocked[]] | unique[] | select(startswith("#")) | ltrimstr("#")' "$w/notes/round.md" 2>/dev/null)
+    numbers=$(jq -Rrs "$MANIFEST"'manifest // empty | [.items[] | .ticket, .blocked[]] | unique[] | select(startswith("#")) | ltrimstr("#")' "$w/notes/round.md" 2>/dev/null)
     [ -n "$numbers" ] && refresh_round "${w##*/}" "$repo" "$numbers"
   done
 }
