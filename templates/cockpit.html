@@ -320,6 +320,7 @@ function roundPanel() {
     return;
   }
   const focused = document.activeElement.id;
+  const scrolled = box.querySelector('.graph-scroll')?.scrollLeft ?? 0;
   const at = Math.max(0, data.rounds.findIndex(r => r.project === shownRound));
   const r = data.rounds[at];
   const depth = graphDepth(r.items);
@@ -339,6 +340,7 @@ function roundPanel() {
     roundPanel();
   }));
   document.getElementById(focused)?.focus();
+  box.querySelector('.graph-scroll').scrollLeft = scrolled;
   drawEdges(r);
 }
 

@@ -34,12 +34,18 @@ def manifest:
     end;'
 ROUND="$KNOWN$MANIFEST"'
 def distinct(f): reduce .[] as $x ([]; if any(.[]; f == ($x | f)) then . else . + [$x] end);
+def merged_tickets:
+  reduce .[] as $x ([];
+    (map(.ticket) | index($x.ticket)) as $at
+    | if $at == null then . + [$x]
+      else .[$at] |= (.blocked += $x.blocked | .inherited = ((.inherited // []) + ($x.inherited // [])) | .parent //= $x.parent) end);
 def slices:
   split("\n") | map(select(. != "") | split("\u001f"))
   | map(.[1] as $label
     | ($label | ticket_at("^(?<p>\(TICKET))/(?<c>.+)$")) as $path
-    | (if $path != null and ($path.c | test("^(\(TICKET))$")) then $path.c else $label end) as $ticket
-    | {ticket: $ticket, base: ($ticket | split(" ")[0]), parent: $path.p, executor: .[0], state: .[2],
+    | ($path != null and ($path.c | test("^(\(TICKET))$"))) as $numbered
+    | (if $numbered then $path.c else $label end) as $ticket
+    | {ticket: $ticket, base: (if $path != null and ($numbered | not) then $path.p else $ticket | split(" ")[0] end), parent: $path.p, executor: .[0], state: .[2],
        model: (.[3] | known), points: (.[4] | known), step: (.[5] | known)});
 ($cached[0] // {}) as $cache
 | def issue($t): $cache.issues[$t] // {};
@@ -50,8 +56,8 @@ def slices:
       | if .is_parent then
           (issue($e.ticket).leaves // [])
           | map({ticket: ., parent: $e.ticket, blocked: $e.blocked, inherited: (issue($e.ticket).blockers // [])})
-        else [$e] end) | add | distinct(.ticket)) as $tickets
-  | ($board | map(. as $s | select(all($tickets[]; .ticket != $s.base)))) as $unlisted
+        else [$e] end) | add | merged_tickets) as $tickets
+  | ($board | map(. as $s | select(all($tickets[]; .ticket != $s.base) and all($m.items[]; (.is_parent and .ticket == $s.ticket) | not)))) as $unlisted
   | def still_open($b):
       [$board[] | select(.base == $b.ticket)] as $own
       | if ($own | length) > 0 then any($own[]; .step != 7)
@@ -64,7 +70,7 @@ def slices:
     def item($e; $s):
       blockers($e) as $b
       | [$b[] | select(.open) | .ticket] as $waiting
-      | {ticket: ($s.ticket // $e.ticket), base: ($s.base // $e.ticket), parent: ($e.parent // $s.parent), rule: (issue($e.ticket) | .rule // .title),
+      | {ticket: ($s.ticket // $e.ticket), base: ($s.base // $e.ticket), parent: ($e.parent // (if $s.parent != $e.ticket then $s.parent else null end)), rule: (issue($e.ticket) | .rule // .title),
          state: ($s.state // (if ($waiting | length) > 0 then "espera " + ($waiting | join(", ")) else "Na fila" end)),
          step: ($s.step // "—"), executor: ($s.executor // "—"), model: ($s.model // "—"), points: ($s.points // "—"), blockers: $b};
     {project: $project, date: $m.date,

@@ -1094,6 +1094,17 @@ refresh
 check "R5 a blocker only GitHub names is enough to wait" "$(val "$(item "$(snap)" '#260')" '.state')" "espera #261"
 
 round_ws
+note w1 round "round · 2026-11-06" "1. #200 (parent, 2 leaves)" "2. #201 (leaf of #200, blocked by #199)"
+gissue 200 "Pai" "**Rule:** R." "[]" "[$(gleaf 201 F '**Rule:** R.'),$(gleaf 202 F '**Rule:** R.')]"
+refresh
+check "R5 a leaf also listed under its parent keeps its blocked by" "$(val "$(item "$(snap)" '#201')" '.state')" "espera #199"
+note w1 round "round · 2026-11-06" "1. #201 (leaf of #200)" "2. #200 (parent, 2 leaves)"
+gissue 200 "Pai" "**Rule:** R." "[$(blocker 150)]" "[$(gleaf 201 F '**Rule:** R.'),$(gleaf 202 F '**Rule:** R.')]"
+gissue 201 "F" "**Rule:** R."
+refresh
+check "R5 a leaf listed before its parent keeps the parent's blocker" "$(val "$(item "$(snap)" '#201')" '.state')" "espera #150"
+
+round_ws
 note w1 round "round · 2026-11-06" "1. #1 (leaf)" "2. #2 (leaf)" "3. #3 (leaf)" "4. #4 (leaf)" "5. #5 (leaf)"
 note w1 board "— · #1 · held behind PR #260 · opus · 5" "— · #2 · held behind #201 · opus · 5" "Facheiro · #3 · aguarda vaga · opus · 3" "Sisal · #4 · a decidir, pelo Jonatas · opus · 3" "Sisal · #5 · implementing · opus · 3"
 out=$(snap)
@@ -1123,6 +1134,13 @@ rm "$STATE/rounds/w1.json"
 out=$(snap)
 check "R7 with no cache a parent is still no node" "$(tickets "$out")" "#270 #239"
 check "R7 with no cache the panel still names the parent" "$(val "$out" '.rounds[0].parents[0] | .ticket + " " + (.leaves | tostring)')" "#238 2"
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #204 (leaf of #200)" "2. #205 (leaf, blocked by #204)" "3. #238 (parent, 2 leaves)"
+note w1 board "Jatobá · #204/banco · merged · opus · 2" "— · #204/telas · implementing · opus · 3" "Pua · #238 · reviewing · opus · 2"
+out=$(snap)
+check "R7 a leaf split into slug slices has no card of its own and no parent line of itself" "$(val "$out" '[.rounds[0].items[] | .ticket + " " + (.parent // "-")] | join(",")')" "#204/banco #200,#204/telas #200,#205 -"
+check "R7 a ticket waits while one slice of its blocker is not merged" "$(val "$(item "$out" '#205')" '.state')" "espera #204"
 
 round_ws
 note w1 round "round · 2026-11-06" "1. #280 (leaf)" "2. #281 (leaf)"
@@ -1274,6 +1292,23 @@ note w1 board "Jurema · #240 · implementing · sonnet · 1" "Cumaru · #241 ·
 serve_start
 hasnt "R14 one ticket running shows no together line" "$(visible "$(page)")" 'juntos'
 serve_stop
+
+round_ws
+note w1 round "round · 2026-11-06" "1. #330 (leaf)" "2. #331 (leaf)" "3. #332 (leaf)" "4. #333 (leaf)" "5. #334 (leaf)"
+gissue 330 "T" "**Rule:** R."
+gissue 331 "T" "**Rule:** R." "[$(blocker 330)]"
+gissue 332 "T" "**Rule:** R." "[$(blocker 331)]"
+gissue 333 "T" "**Rule:** R." "[$(blocker 332)]"
+gissue 334 "T" "**Rule:** R." "[$(blocker 333)]"
+refresh
+rm -rf "$T/copy"; mkdir -p "$T/copy"; cp -r "$ROOT/bin" "$ROOT/templates" "$T/copy/"
+sed -i 's|^refresh();$|refresh();\nlet probed = false;\nsetInterval(() => { const box = document.querySelector(".graph-scroll"); if (probed \|\| !box) return; probed = true; box.scrollLeft = 40; setTimeout(() => document.body.insertAdjacentHTML("beforeend", `<pre id="probe-scroll">${document.querySelector(".graph-scroll").scrollLeft}</pre>`), 6000); }, 50);|' "$T/copy/templates/cockpit.html"
+ORIG_ROOT=$ROOT; ROOT=$T/copy
+serve_start
+dom=$(page_at 800 9000)
+ROOT=$ORIG_ROOT
+serve_stop
+check "R15 a refresh keeps the graph's sideways scroll" "$(grep -oP '<pre id="probe-scroll">\K[0-9]+' <<<"$dom")" 40
 
 round_ws
 note w1 round "round · 2026-11-06" "1. #320 (leaf)" "2. #321 (leaf)"
