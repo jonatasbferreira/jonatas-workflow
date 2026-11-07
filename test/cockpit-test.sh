@@ -1311,6 +1311,32 @@ serve_stop
 check "R15 a refresh keeps the graph's sideways scroll" "$(grep -oP '<pre id="probe-scroll">\K[0-9]+' <<<"$dom")" 40
 
 round_ws
+note w1 round "round · 2026-11-06" "1. #196 (leaf)" "2. #203 (leaf)" "3. #204 (leaf)" "4. #205 (leaf)" "5. #206 (leaf)" "6. #207 (leaf)" "7. #208 (leaf)"
+note w1 board "Sisal · #196 · reviewing · opus · 3" "— · #203 · held behind PR #272 (#196) · sonnet · 3" "— · #204 · held behind #196 e #300 · opus · 5" \
+  "— · #205 · held behind PR #260 · opus · 1" "Jatobá · #206 · merged · opus · 1" "— · #207 · held behind #206 · opus · 1" "— · #208 · held behind #196; rebase first · opus · 1"
+gissue 196 "T" "**Rule:** R."
+gissue 203 "T" "**Rule:** R."
+refresh
+gh_serve
+dom=$(page_at 1440)
+check "H1 a board wait that names a ticket draws its arrow: dashed while open, solid once merged, none for a PR with no ticket or a ticket off the panel" "$(edges "$dom")" "merged #206>#207,open #196>#203,open #196>#204,open #196>#208,"
+check "H2 a board wait moves the card to the next column" "$(grep -oP 'data-depth="\K[0-9]+' <<<"$dom" | tr -d '\n')" "0110011"
+check "H3 a PR number is no blocker" "$(val "$(item "$(snap)" '#205')" '.blockers | length')" 0
+check "H3 a ticket off the panel is no blocker of a board wait" "$(val "$(item "$(snap)" '#204')" '[.blockers[].ticket] | join(",")')" "#196"
+check "H4 the card says its wait once" "$(grep -oP '<footer>\K[^<]*' <<<"$dom" | sed -n 2p)" 'espera PR #272 (#196)'
+check "H4 the card says its wait once whatever follows the ticket" "$(grep -oP '<footer>\K[^<]*' <<<"$dom" | sed -n 7p)" 'espera #196; rebase first'
+serve_stop
+
+round_ws
+note w1 round "round · 2026-11-05" "1. ENG-1 (leaf)" "2. ENG-2 (leaf)"
+note w1 board "Trena · ENG-1 · reviewing · opus · 1" "— · ENG-2 · held behind ENG-1 · opus · 1"
+serve_start
+dom=$(page_at 1440)
+check "H5 an ENG project keeps no arrows" "$(edges "$dom")" ""
+has "H5 an ENG board wait still moves the card" "$dom" 'data-depth="1"'
+serve_stop
+
+round_ws
 note w1 round "round · 2026-11-06" "1. #320 (leaf)" "2. #321 (leaf)"
 gissue 320 "T" "**Rule:** R." "[$(blocker 321)]"
 gissue 321 "T" "**Rule:** R." "[$(blocker 320)]"

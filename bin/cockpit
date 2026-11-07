@@ -58,17 +58,20 @@ def slices:
           | map({ticket: ., parent: $e.ticket, blocked: $e.blocked, inherited: (issue($e.ticket).blockers // [])})
         else [$e] end) | add | merged_tickets) as $tickets
   | ($board | map(. as $s | select(all($tickets[]; .ticket != $s.base) and all($m.items[]; (.is_parent and .ticket == $s.ticket) | not)))) as $unlisted
+  | ([$tickets[].ticket] + [$unlisted[].base]) as $nodes
   | def still_open($b):
       [$board[] | select(.base == $b.ticket)] as $own
       | if ($own | length) > 0 then any($own[]; .step != 7)
         else (issue($b.ticket).state // $b.state) != "CLOSED" end;
-    def blockers($e):
+    def held_behind($s): [$s | select(.step == 0) | .state | gsub("PR #[0-9]+"; "") | scan(TICKET) | select(IN($nodes[]))];
+    def blockers($e; $s):
       ((issue($e.ticket).blockers // []) + ($e.inherited // [])) as $github
-      | ([$e.blocked // [] | .[] | {ticket: .}] + $github | distinct(.ticket) | map(select(.ticket != $e.ticket)))
+      | held_behind($s) as $held
+      | ([$e.blocked // [] | .[] | {ticket: .}] + $github + [$held[] | {ticket: .}] | distinct(.ticket) | map(select(.ticket != $e.ticket)))
       | map(. as $b | {ticket, open: still_open($b),
-          arrow: any($github[]; .ticket == $b.ticket)});
+          arrow: (any($github[]; .ticket == $b.ticket) or (($b.ticket | startswith("#")) and ($b.ticket | IN($held[]))))});
     def item($e; $s):
-      blockers($e) as $b
+      blockers($e; $s) as $b
       | [$b[] | select(.open) | .ticket] as $waiting
       | {ticket: ($s.ticket // $e.ticket), base: ($s.base // $e.ticket), parent: ($e.parent // (if $s.parent != $e.ticket then $s.parent else null end)), rule: (issue($e.ticket) | .rule // .title),
          state: ($s.state // (if ($waiting | length) > 0 then "espera " + ($waiting | join(", ")) else "Na fila" end)),
