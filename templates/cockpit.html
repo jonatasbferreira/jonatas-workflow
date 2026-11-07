@@ -26,7 +26,8 @@ header { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; pa
 .tile b { font-size: 21px; font-weight: 700; line-height: 1.25; }
 .tile small, .note { color: var(--dim); font-size: 12px; }
 .label { color: var(--dim); font-size: 12px; }
-.main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: auto auto 1fr; gap: 12px; grid-template-areas: "quotas attention" "projects filters" "projects legend"; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: auto auto auto 1fr; gap: 12px; grid-template-areas: "round round" "quotas attention" "projects filters" "projects legend"; }
+.round { grid-area: round; }
 .quotas { grid-area: quotas; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .attention { grid-area: attention; } .projects { grid-area: projects; } .filter-panel { grid-area: filters; } .legend-panel { grid-area: legend; align-self: start; }
 .stack { display: grid; gap: 12px; min-width: 0; }
@@ -69,8 +70,42 @@ button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent);
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .legend { display: grid; gap: 3px; font-size: 12px; color: var(--dim); }
 .empty { color: var(--dim); padding: 8px; }
+.round-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; margin-bottom: 9px; }
+.round-head h2 { margin: 0; }
+.round-project { color: var(--accent); font-weight: 700; }
+.round-moves { display: inline-flex; gap: 4px; margin-left: auto; }
+.stale { color: var(--warn); border: 1px solid var(--warn); padding: 1px 8px; border-radius: 4px; font-size: 12px; }
+.together, .parents, .graph-note { margin: 0 0 9px; color: var(--dim); font-size: 12px; }
+.together { color: var(--ok); }
+.graph-note { margin: 10px 0 0; }
+.graph-scroll { overflow-x: auto; padding-block: 2px; }
+.graph { position: relative; display: grid; grid-template-columns: repeat(var(--columns), minmax(210px, 1fr)); gap: 12px 56px; align-items: center; }
+.graph svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.edge { fill: none; stroke: var(--dim); stroke-width: 1.5; }
+.edge.open { stroke-dasharray: 5 4; }
+.edge.merged { stroke: var(--ok); opacity: .55; }
+.edge-head { fill: var(--dim); }
+.edge-head.merged { fill: var(--ok); opacity: .55; }
+.card { position: relative; background: var(--row); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 5px; padding: 7px 9px; display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.card header { display: flex; flex-wrap: wrap; gap: 0 8px; justify-content: space-between; align-items: baseline; padding: 0; border: 0; }
+.card header b { color: var(--accent); }
+.card header span { color: var(--dim); font-size: 12px; }
+.card p { margin: 0; font-size: 12.5px; line-height: 1.4; }
+.card footer { color: var(--dim); font-size: 12px; }
+.card.s-flight { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok); }
+.card.s-flight footer { color: var(--ok); }
+.card.s-review { border-left-color: var(--warn); }
+.card.s-review footer { color: var(--warn); }
+.card.s-waiting { border-style: dashed; border-left-style: solid; border-left-color: var(--crit); }
+.card.s-waiting footer { color: var(--crit); }
+.card.s-merged { opacity: .62; border-left-color: var(--ok); }
+@media (max-width: 759.98px) {
+  .graph { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .graph svg, .graph-note { display: none; }
+  .graph .card { grid-column: 1 !important; grid-row: auto !important; margin-left: min(calc(var(--depth) * 16px), 40%); }
+}
 @media (max-width: 1240px) {
-  .main { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "quotas" "attention" "filters" "projects" "legend"; }
+  .main { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "round" "quotas" "attention" "filters" "projects" "legend"; }
   .tile { padding: 8px 11px; } .tile b { font-size: 18px; } .tile small { font-size: 11.5px; line-height: 1.35; }
   .attn { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
   .filter-panel { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; padding-block: 7px; }
@@ -108,6 +143,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   </header>
   <section class="tiles" id="tiles"></section>
   <div class="main">
+    <section class="panel round" id="round"></section>
     <div class="quotas" id="quotas"></div>
     <section class="panel attention"><h2>Atenção</h2><ul class="attn" id="attention"></ul></section>
     <div class="stack projects" id="projects"></div>
@@ -144,6 +180,7 @@ const FILTERS = [
 let active = 'all';
 let data = null;
 let all = [];
+let shownRound = null;
 
 const esc = v => String(v).replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const isNumber = v => typeof v === 'number';
@@ -228,10 +265,89 @@ function filters() {
   document.getElementById(focused)?.focus();
 }
 
+const inFlight = i => isNumber(i.step) && i.step >= 1 && i.step <= 6;
+
+function graphDepth(items) {
+  const known = new Map();
+  const depth = i => {
+    if (known.has(i)) return known.get(i);
+    known.set(i, 0);
+    const above = i.blockers.flatMap(b => items.filter(o => o.base === b.ticket));
+    known.set(i, Math.max(0, ...above.map(o => depth(o) + 1)));
+    return known.get(i);
+  };
+  return depth;
+}
+
+function cardClass(i) {
+  if (i.step === 7) return 's-merged';
+  if (isNumber(i.step) && i.step >= 4 && i.step <= 6) return 's-review';
+  if (inFlight(i)) return 's-flight';
+  return i.state.startsWith('espera') ? 's-waiting' : 's-queued';
+}
+
+const unset = v => v === '—' || v === '?';
+
+function card(i, depth, row) {
+  const facts = [i.parent ? `de ${esc(i.parent)}` : '', unset(i.points) ? '' : `${esc(i.points)} pts`, unset(i.model) ? '' : esc(i.model)].filter(Boolean).join(' · ');
+  const said = i.state.split(/[ ,]+/);
+  const waits = i.blockers.filter(b => b.open && !said.includes(b.ticket)).map(b => `espera ${esc(b.ticket)}`);
+  const foot = [esc(i.state), i.executor === '—' ? '' : esc(i.executor), ...waits].filter(Boolean).join(' · ');
+  return `<article class="card ${cardClass(i)}" data-depth="${depth}" style="grid-column:${depth + 1};grid-row:${row};--depth:${depth}">
+    <header><b>${esc(i.ticket)}</b><span>${facts}</span></header>${i.rule ? `<p>${esc(i.rule)}</p>` : ''}<footer>${foot}</footer></article>`;
+}
+
+function drawEdges(r) {
+  const graph = document.getElementById('graph');
+  const svg = document.getElementById('edges');
+  if (!graph) return;
+  if (!matchMedia('(min-width: 760px)').matches) { svg.innerHTML = ''; return; }
+  const box = graph.getBoundingClientRect();
+  const rects = new Map([...graph.querySelectorAll('.card')].map((c, n) => [r.items[n], c.getBoundingClientRect()]));
+  svg.innerHTML = r.items.flatMap(i => i.blockers.filter(b => b.arrow).flatMap(b => r.items.filter(o => o.base === b.ticket).map(o => {
+    const from = rects.get(o), to = rects.get(i), kind = b.open ? 'open' : 'merged';
+    const x1 = from.right - box.left, y1 = from.top + from.height / 2 - box.top;
+    const x2 = to.left - box.left - 7, y2 = to.top + to.height / 2 - box.top;
+    const middle = (x1 + x2) / 2;
+    return `<path class="edge ${kind}" data-from="${esc(o.ticket)}" data-to="${esc(i.ticket)}" d="M${x1} ${y1} C${middle} ${y1} ${middle} ${y2} ${x2} ${y2}"/><path class="edge-head ${kind}" d="M${x2 + 6} ${y2} l-7 -4 v8 z"/>`;
+  }))).join('');
+}
+
+function roundPanel() {
+  const box = document.getElementById('round');
+  if (!data.rounds.length) {
+    box.innerHTML = '<span class="note">Sem rodada aberta</span>';
+    return;
+  }
+  const focused = document.activeElement.id;
+  const scrolled = box.querySelector('.graph-scroll')?.scrollLeft ?? 0;
+  const at = Math.max(0, data.rounds.findIndex(r => r.project === shownRound));
+  const r = data.rounds[at];
+  const depth = graphDepth(r.items);
+  const rows = {};
+  const cards = r.items.map(i => { const d = depth(i); rows[d] = (rows[d] ?? 0) + 1; return card(i, d, rows[d]); }).join('');
+  const flying = r.items.filter(inFlight);
+  const parents = r.parents.map(p => `${esc(p.ticket)}${isNumber(p.leaves) ? ` (${p.leaves} folhas)` : ''}`).join(' · ');
+  const moves = data.rounds.length > 1 ? `<span class="round-moves"><button id="round-back" type="button" data-move="-1" aria-label="Projeto anterior">‹</button><button id="round-next" type="button" data-move="1" aria-label="Próximo projeto">›</button></span>` : '';
+  box.innerHTML = `<div class="round-head"><h2>Rodada <span class="round-project">${esc(r.project)}</span> <span>${esc(r.date.split('-').reverse().slice(0, 2).join('/'))}</span></h2>
+    ${r.stale ? `<span class="stale" role="status">GitHub desatualizado${isNumber(r.refreshed_at) ? ` · dados de ${clock(r.refreshed_at)}` : ''}</span>` : ''}${moves}</div>
+    ${flying.length > 1 ? `<p class="together">${flying.length} em andamento juntos: ${flying.map(i => esc(i.ticket)).join(' + ')}</p>` : ''}
+    ${parents ? `<p class="parents">Pais: ${parents}</p>` : ''}
+    <div class="graph-scroll"><div class="graph" id="graph" style="--columns:${Math.max(...Object.keys(rows).map(Number)) + 1}"><svg id="edges" aria-hidden="true"></svg>${cards}</div></div>
+    <p class="graph-note">Seta: um ticket libera o outro. Tracejada: ainda não liberou.</p>`;
+  box.querySelectorAll('[data-move]').forEach(b => b.addEventListener('click', () => {
+    shownRound = data.rounds[(at + Number(b.dataset.move) + data.rounds.length) % data.rounds.length].project;
+    roundPanel();
+  }));
+  document.getElementById(focused)?.focus();
+  box.querySelector('.graph-scroll').scrollLeft = scrolled;
+  drawEdges(r);
+}
+
 function render() {
   all = data.projects.flatMap(p => p.agents);
   document.getElementById('clock').textContent = clock(data.generated_at);
-  tiles(); quotas(); projects(); attention(); filters();
+  tiles(); roundPanel(); quotas(); projects(); attention(); filters();
 }
 
 function failed() {
@@ -253,5 +369,6 @@ async function refresh() {
   setTimeout(refresh, REFRESH_MS);
 }
 
+addEventListener('resize', () => { if (data) roundPanel(); });
 refresh();
 </script>
