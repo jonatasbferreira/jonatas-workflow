@@ -290,7 +290,7 @@ const unset = v => v === '—' || v === '?';
 
 function card(i, depth, row) {
   const facts = [i.parent ? `de ${esc(i.parent)}` : '', unset(i.points) ? '' : `${esc(i.points)} pts`, unset(i.model) ? '' : esc(i.model)].filter(Boolean).join(' · ');
-  const said = i.state.split(/[ ,()]+/);
+  const said = i.state.match(/#[0-9]+|[A-Z]+-[0-9]+/g) ?? [];
   const waits = i.blockers.filter(b => b.open && !said.includes(b.ticket)).map(b => `espera ${esc(b.ticket)}`);
   const foot = [esc(i.state), i.executor === '—' ? '' : esc(i.executor), ...waits].filter(Boolean).join(' · ');
   return `<article class="card ${cardClass(i)}" data-depth="${depth}" style="grid-column:${depth + 1};grid-row:${row};--depth:${depth}">
