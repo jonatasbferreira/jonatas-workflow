@@ -1136,10 +1136,10 @@ check "R7 with no cache a parent is still no node" "$(tickets "$out")" "#270 #23
 check "R7 with no cache the panel still names the parent" "$(val "$out" '.rounds[0].parents[0] | .ticket + " " + (.leaves | tostring)')" "#238 2"
 
 round_ws
-note w1 round "round · 2026-11-06" "1. #204 (leaf of #200)" "2. #205 (leaf, blocked by #204)" "3. #238 (parent, 2 leaves)"
-note w1 board "Jatobá · #204/banco · merged · opus · 2" "— · #204/telas · implementing · opus · 3" "Pua · #238 · reviewing · opus · 2"
+note w1 round "round · 2026-11-06" "1. #204 (leaf of #200)" "2. #205 (leaf, blocked by #204)" "3. #238 (parent, 2 leaves)" "4. #206 (leaf)"
+note w1 board "Jatobá · #204/banco · merged · opus · 2" "— · #204/telas · implementing · opus · 3" "Pua · #238 · reviewing · opus · 2" "Sisal · #206/extra · implementing · opus · 1"
 out=$(snap)
-check "R7 a leaf split into slug slices has no card of its own and no parent line of itself" "$(val "$out" '[.rounds[0].items[] | .ticket + " " + (.parent // "-")] | join(",")')" "#204/banco #200,#204/telas #200,#205 -"
+check "R7 a leaf split into slug slices has no card of its own and no parent line of itself" "$(val "$out" '[.rounds[0].items[] | .ticket + " " + (.parent // "-")] | join(",")')" "#204/banco #200,#204/telas #200,#205 -,#206/extra -"
 check "R7 a ticket waits while one slice of its blocker is not merged" "$(val "$(item "$out" '#205')" '.state')" "espera #204"
 
 round_ws
