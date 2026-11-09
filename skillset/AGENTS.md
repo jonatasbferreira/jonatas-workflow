@@ -39,7 +39,7 @@ Decisions, not code. Per repo: a short `AGENTS.md` (what the project is, package
 
 # Models and effort
 
-Effort starts low. Decisions get the strongest model at effort `high`; long agentic work, orchestration and verification get opus at effort `high`; `max` only after `high` shows a reasoning failure. Implementation gets the cheapest model the ticket allows: estimate 1 or 2 and low risk → sonnet with low effort; estimate 3 → sonnet with medium effort; estimate 5, high risk or domain rules → opus with medium effort. Effort goes up one level only when an agent fails or stalls, and the reason is written down. Haiku is never used.
+Effort starts low. Decisions get the strongest model at effort `high`, except the Definer, which runs on opus (ADR 0012); long agentic work, orchestration and verification get opus at effort `high`; `max` only after `high` shows a reasoning failure. Implementation gets the cheapest model the ticket allows: estimate 1 or 2 and low risk → sonnet with low effort; estimate 3 → sonnet with medium effort; estimate 5, high risk or domain rules → opus with medium effort. Effort goes up one level only when an agent fails or stalls, and the reason is written down. Haiku is never used.
 
 # Issue tracker
 

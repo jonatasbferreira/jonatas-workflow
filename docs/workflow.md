@@ -49,7 +49,7 @@ The Claude Code Notification hook in `~/.claude/settings.json` points to `jonata
 ## After editing the workflow
 
 - `skillset/AGENTS.md`, a skill or a subagent: nothing to run, they are links. A new skill or subagent needs one `bin/install`.
-- A role file in `jonatas-workflow/roles/`: type `/clear` in that terminal. The preset re-reads the file at the next session.
+- A role file in `jonatas-workflow/roles/`: type `/clear` in that terminal. The preset re-reads the file at the next session. A change to the role's model or effort also needs that terminal's start command changed and the terminal restarted, since `/clear` keeps the model it started with.
 - `templates/hand-test.html`: nothing to run; the Orchestrator reads it when the next round opens.
 - A note template or a routine prompt: rerun `bin/setup-canvas` in the Orchestrator terminal. It recreates any missing standing note, refreshes `how it works` from its template and refreshes the routine prompts; `board`, `for you`, `findings` and `round` hold live content and are never overwritten, so a change to their templates reaches only a new workspace.
 

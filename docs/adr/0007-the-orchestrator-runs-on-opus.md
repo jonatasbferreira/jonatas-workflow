@@ -6,4 +6,4 @@ The Orchestrator moves from Fable 5.1 to Opus 5.5, both at effort `high`; the De
 
 Considered options: both on Opus, rejected until rounds with the Orchestrator on Opus show no more rework (`R: changes`, failed verifications) than on Fable; both on Fable, rejected because it pays Fable's price for work Opus does as well.
 
-Superseded on the Definer by ADR 0012: the Definer runs on Opus too.
+2026-11-09: ADR 0012 supersedes this on the Definer, which now runs on Opus too.
