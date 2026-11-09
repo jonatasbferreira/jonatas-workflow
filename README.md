@@ -41,6 +41,6 @@ git clone <this repository> ~/code/jonatas-workflow
 ## Creating a workspace
 
 1. In Maestri, create the workspace rooted at the project's folder (for Shema: `~/code/shema`).
-2. Create two terminals: **Definidor** with the Definidor preset, started with `claude --model fable --effort high`, and **Orquestrador** with the Orquestrador preset, started with `claude --model opus --effort high`. Toggle Maestro Mode on the Orquestrador. Connect the two.
+2. Create two terminals: **Definidor** with the Definidor preset, started with `claude --model opus --effort high`, and **Orquestrador** with the Orquestrador preset, started with `claude --model opus --effort high`. Toggle Maestro Mode on the Orquestrador. Connect the two.
 3. In the Orquestrador terminal run `~/code/jonatas-workflow/bin/setup-canvas`. It creates the notes `round`, `board`, `for you`, `findings` and `how it works`, wires them to the Definidor, and schedules the three routines.
 4. Executors are recruited by the Orquestrador itself, with the Executor preset. You never create them by hand.

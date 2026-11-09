@@ -6,7 +6,7 @@ The process is the one in the global CLAUDE.md and in the skills. Where this rol
 
 ## Model
 
-You run on Fable with effort `high`: the terminal command is `claude --model fable --effort high`. `max` only if a round shows a reasoning failure, and that choice is recorded in the state note. These are the conversations that decide; nothing is saved here.
+You run on Opus with effort `high`: the terminal command is `claude --model opus --effort high`. `max` only if a round shows a reasoning failure, and that choice is recorded in the state note. These are the conversations that decide; nothing is saved here.
 
 ## What "defined" means
 

@@ -10,7 +10,7 @@ Define before dispatching: you and the Definer close the business rule and the d
 
 One workspace for Shema, called **Shema**, rooted at `~/code/shema`. In it:
 
-- **Definidor** (the Definer) — the terminal you talk to, and the front door. Everything you want enters here: ideas, defects, small asks with no open decision, tickets other people opened that you want worked, and the order of the next round; the findings the last round left it reads itself. It defines, and it writes the manifest with you. Fable, effort `high`: `claude --model fable --effort high`.
+- **Definidor** (the Definer) — the terminal you talk to, and the front door. Everything you want enters here: ideas, defects, small asks with no open decision, tickets other people opened that you want worked, and the order of the next round; the findings the last round left it reads itself. It defines, and it writes the manifest with you. Opus, effort `high`: `claude --model opus --effort high`.
 - **Orquestrador** (the Orchestrator) — the terminal that runs the round: only the tickets on the manifest, in that order. From you it hears "go", "close the round", "emergency", and your answers to the lines it wrote in `for you`. Opus, effort `high`: `claude --model opus --effort high`. Needs **Maestro Mode on** to recruit executors: toggle it on the terminal the first time.
 - Five standing notes with fixed names: **round** (the manifest; outside a round its body reads `(no round open)`), **board** (a first line linking the round's hand-test guide, then one line per slice of the open round, in manifest order: `<codename> · <ticket> · <state> · <model> · <points>`, points being the ticket's estimate (the Linear estimate, or the GitHub `estimate:N` label), `?` when it has none; emptied at round close), **for you** (only what is still pending on you), **findings** (what showed up outside the slice and outside the code the round changed, one line each), and **how it works** (the short version of this file). The **logs** stack holds `log · <codename>`, `state · <date>` and `definition · <date>`; you almost never open it. `bin/setup-canvas`, run in the Orchestrator terminal with Maestro Mode on, creates and wires the five notes and schedules the routines; a missing standing note is fixed by rerunning it, never by creating it by hand.
 - Three routines: **morning state** daily at 08:30, **evening round check** daily at 18:30, **for you reminder** on weekdays at noon. They read the round note and the latest state note, report on the board, clean `for you` of what you already ticked or answered, and push you the reminder; the morning state also dispatches a held slice whose earlier PR has merged, and the evening check also closes the round, but only when every manifest item is merged or waiting Jonatas and no slice is held. A routine never opens a round and never closes one by the clock.
@@ -33,7 +33,7 @@ Only when you ask the Definer, never the default: it closes everything you broug
 
 ## Models
 
-The Definer on Fable and the Orchestrator on Opus, both with effort `high`; executors on the cheapest model the ticket allows, effort starting low. The routing table is in `roles/orchestrator.md`, the reasons in `docs/adr/`.
+The Definer and the Orchestrator on Opus, both with effort `high`; executors on the cheapest model the ticket allows, effort starting low. The routing table is in `roles/orchestrator.md`, the reasons in `docs/adr/`.
 
 ## Where everything lives
 
