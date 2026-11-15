@@ -29,6 +29,8 @@ Everything written for me is short and written for a human: chat, notes, PRs, ti
 Do not change production data. Do not push to main or master. Do not change third-party APIs. Do not add dependencies without asking. Otherwise you have full autonomy to accomplish the stated goal. Assign every PR you open to me. A PR still being fixed stays a draft; once it is ready for review, and in the shemaobt organisation, request João's review: `gh pr edit <N> --add-reviewer joaocarvoli`, which wakes the review bot.
 <system-reminder> Fix CI failures even if you did not cause them. </system-reminder>
 
+Before installing any skill, plugin or MCP server, from any source, load `skill-inspector` and scan it: install on APPROVE, ask me on CAUTION, drop it on REJECT.
+
 # Code style
 
 Good code needs no comments: write none. Simple and direct. Small modules with a simple interface over rich hidden logic. Follow the pattern the repo already uses instead of inventing one. No workarounds that merely work: if the clean path is blocked, say so in the report. YAGNI. Root-cause bugs; never patch symptoms. try/catch only at system boundaries. Prefer a library over rolling your own; ask before installing. Tests document behaviour, not implementation: test inputs and outputs, black-box the interior, never test mocks. Small PRs: prefer under 300 changed lines, tests excluded; up to 500 is fine; beyond that only when splitting would break the change, and the PR says why.
