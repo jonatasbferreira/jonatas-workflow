@@ -33,7 +33,7 @@ Before installing any skill, plugin or MCP server, from any source, load `skill-
 
 # Code style
 
-Good code needs no comments: write none. Simple and direct. Small modules with a simple interface over rich hidden logic. Follow the pattern the repo already uses instead of inventing one. No workarounds that merely work: if the clean path is blocked, say so in the report. YAGNI. Root-cause bugs; never patch symptoms. try/catch only at system boundaries. Prefer a library over rolling your own; ask before installing. Tests document behaviour, not implementation: test inputs and outputs, black-box the interior, never test mocks. Small PRs: prefer under 300 changed lines, tests excluded; up to 500 is fine; beyond that only when splitting would break the change, and the PR says why.
+Good code needs no comments: write none. Simple and direct. Small modules with a simple interface over rich hidden logic. Follow the pattern the repo already uses instead of inventing one. No workarounds that merely work: if the clean path is blocked, say so in the report. YAGNI. Root-cause bugs; never patch symptoms. try/catch only at system boundaries. Prefer a library over rolling your own; ask before installing. Tests document behaviour, not implementation: test inputs and outputs, black-box the interior, never test mocks. A test or fixture takes its times as fixed values, never from the wall clock, and a browser test pins its clock: a time relative to now breaks CI when the UTC day turns. Small PRs: prefer under 300 changed lines, tests excluded; up to 500 is fine; beyond that only when splitting would break the change, and the PR says why.
 
 # Documentation
 
